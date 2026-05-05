@@ -127,7 +127,7 @@ class AttendanceApp {
                 body: JSON.stringify({ email, password: pass })
             });
             const data = await res.json();
-            if (data.error) { alert("Giriş Hatalı! " + data.error); return; }
+            if (data.error) { this.toast('Giriş Hatalı: ' + data.error, 'error'); return; }
             this.currentUser = data;
             await this.syncFromCloud();
             this.showDashboard();
@@ -137,7 +137,7 @@ class AttendanceApp {
                 sessionStorage.removeItem('pending_session');
             }
         } catch(e) {
-            alert("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.");
+            this.toast('Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.', 'error');
         }
     }
 
@@ -147,6 +147,8 @@ class AttendanceApp {
         document.getElementById('user-display-name').innerText = this.currentUser.name;
         const roleLabel = { teacher: 'Öğretim Görevlisi', student: 'Öğrenci', admin: 'Yönetici' };
         document.getElementById('user-display-role').innerText = roleLabel[this.currentUser.role] || '';
+        const avatarEl = document.getElementById('nav-avatar');
+        if (avatarEl) avatarEl.textContent = this.currentUser.name[0].toUpperCase();
 
         if (this.currentUser.role === 'teacher') {
             this.renderTeacherCourses();
@@ -190,6 +192,7 @@ class AttendanceApp {
         this.renderQRCode(qrData);
         this.renderAttendeeList();
         this.switchView('view-session');
+        this.startCountdown(expiry);
     }
 
     renderQRCode(data) {
@@ -199,6 +202,7 @@ class AttendanceApp {
     }
 
     async closeSession() {
+        this.stopCountdown();
         this.db.active_session = null;
         await this.syncToCloud();
         this.switchView('view-teacher');
@@ -228,7 +232,7 @@ class AttendanceApp {
     }
 
     printCurrentSession() {
-        if (this.db.records.length === 0) { alert("Henüz katılımcı yok."); return; }
+        if (this.db.records.length === 0) { this.toast('Henüz katılımcı yok.', 'info'); return; }
         const course = this.db.courses.find(c => c.id === this.db.active_session?.course_id);
         const attendees = this.db.records.map(id => this.db.users.find(u => u.id === parseInt(id))).filter(Boolean);
         this.printSession({ course_code: course?.code || '', course_name: course?.name || 'Ders', date: new Date().toLocaleString('tr-TR'), attendees });
@@ -393,14 +397,14 @@ class AttendanceApp {
         await this.syncFromCloud();
         if (this.db.active_session && this.db.active_session.pin === code) {
             await this.processAttendance(this.db.active_session.qr_data);
-        } else { alert("Hatalı Kod!"); }
+        } else { this.toast('Hatalı kod! Lütfen tekrar deneyin.', 'error'); }
     }
 
     async processAttendance(qrData) {
         // QR süre kontrolü
         const expMatch = qrData.match(/_EXP_(\d+)/);
         if (expMatch && Date.now() > parseInt(expMatch[1])) {
-            alert("QR kodunun süresi dolmuş! Öğretmenden yeni kod isteyin."); return;
+            this.toast('QR kodunun süresi dolmuş! Öğretmenden yeni kod isteyin.', 'warning'); return;
         }
         await this.syncFromCloud();
         if (this.db.active_session && this.db.active_session.qr_data === qrData) {
@@ -411,8 +415,9 @@ class AttendanceApp {
                 const course = this.db.courses.find(c => c.id === this.db.active_session.course_id);
                 document.getElementById('success-course-name').innerText = course ? course.name : "Ders";
                 document.getElementById('success-overlay').classList.remove('hidden');
-            } else { alert("Zaten katıldınız!"); }
-        } else { alert("Geçersiz Oturum!"); }
+                this.toast('Yoklamanız başarıyla alındı!', 'success');
+            } else { this.toast('Bu derse zaten katıldınız!', 'warning'); }
+        } else { this.toast('Geçersiz oturum! QR kodu eşleşmiyor.', 'error'); }
     }
 
     // ── İSTATİSTİK ───────────────────────────────────────────────────────────
@@ -499,7 +504,7 @@ class AttendanceApp {
     }
 
     exportStatsExcel() {
-        if (!this.statsData || !this.statsData.courses.length) { alert("İstatistik verisi yok."); return; }
+        if (!this.statsData || !this.statsData.courses.length) { this.toast('İstatistik verisi henüz yok.', 'info'); return; }
         const rows = [['Ders Kodu', 'Ders Adı', 'Toplam Oturum', 'Ort. Katılım']];
         this.statsData.courses.forEach(c => rows.push([c.course_code, c.course_name, c.total_sessions, c.avg_attendance]));
         const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -642,7 +647,7 @@ class AttendanceApp {
             student_no: document.getElementById('m-student-no')?.value.trim() || '',
             department: document.getElementById('m-department')?.value.trim() || '',
         };
-        if (!data.name || !data.email) { alert("Ad ve e-posta zorunlu."); return; }
+        if (!data.name || !data.email) { this.toast('Ad ve e-posta zorunlu.', 'error'); return; }
 
         const url    = this.editingUser ? `/admin/users/${this.editingUser.id}` : '/admin/users';
         const method = this.editingUser ? 'PUT' : 'POST';
@@ -650,8 +655,9 @@ class AttendanceApp {
             method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
         });
         const result = await res.json();
-        if (result.error) { alert(result.error); return; }
+        if (result.error) { this.toast(result.error, 'error'); return; }
         this.closeModal();
+        this.toast('Kullanıcı kaydedildi.', 'success');
         await this.refreshAdminUsers();
         await this.syncFromCloud();
     }
@@ -697,15 +703,16 @@ class AttendanceApp {
             name:       document.getElementById('m-cname').value.trim(),
             teacher_id: document.getElementById('m-teacher').value,
         };
-        if (!data.code || !data.name) { alert("Kod ve ad zorunlu."); return; }
+        if (!data.code || !data.name) { this.toast('Ders kodu ve adı zorunlu.', 'error'); return; }
         const url    = this.editingCourse ? `/admin/courses/${this.editingCourse.id}` : '/admin/courses';
         const method = this.editingCourse ? 'PUT' : 'POST';
         const res = await fetch(`${CONFIG.API_BASE}${url}`, {
             method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
         });
         const result = await res.json();
-        if (result.error) { alert(result.error); return; }
+        if (result.error) { this.toast(result.error, 'error'); return; }
         this.closeModal();
+        this.toast('Ders kaydedildi.', 'success');
         await this.refreshAdminCourses();
         await this.syncFromCloud();
     }
@@ -723,11 +730,98 @@ class AttendanceApp {
         this.editingCourse = null;
     }
 
+    // ── TOAST ────────────────────────────────────────────────────────────────
+
+    toast(message, type = 'info') {
+        const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+        const t = document.createElement('div');
+        t.className = `toast toast-${type}`;
+        t.innerHTML = `
+            <span class="toast-icon">${icons[type] || 'ℹ'}</span>
+            <span class="toast-msg">${message}</span>
+            <button class="toast-close" onclick="this.parentElement.remove()">✕</button>`;
+        document.getElementById('toast-container').appendChild(t);
+        requestAnimationFrame(() => requestAnimationFrame(() => t.classList.add('show')));
+        setTimeout(() => {
+            t.classList.remove('show');
+            setTimeout(() => t.remove(), 400);
+        }, 3800);
+    }
+
+    // ── AUTH TABS ────────────────────────────────────────────────────────────
+
+    switchAuthTab(tab) {
+        document.getElementById('auth-login-panel')?.classList.toggle('hidden', tab !== 'login');
+        document.getElementById('auth-register-panel')?.classList.toggle('hidden', tab !== 'register');
+        document.getElementById('tab-btn-login')?.classList.toggle('active', tab === 'login');
+        document.getElementById('tab-btn-register')?.classList.toggle('active', tab === 'register');
+    }
+
+    // ── KAYIT ────────────────────────────────────────────────────────────────
+
+    async register() {
+        const name   = document.getElementById('reg-name').value.trim();
+        const email  = document.getElementById('reg-email').value.trim();
+        const studNo = document.getElementById('reg-student-no').value.trim();
+        const pass   = document.getElementById('reg-password').value;
+        const pass2  = document.getElementById('reg-password2').value;
+        if (!name || !email || !studNo || !pass) { this.toast('Tüm alanları doldurun.', 'error'); return; }
+        if (pass !== pass2)  { this.toast('Şifreler eşleşmiyor.', 'error'); return; }
+        if (pass.length < 6) { this.toast('Şifre en az 6 karakter olmalı.', 'error'); return; }
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name, email, student_no: studNo, password: pass })
+            });
+            const data = await res.json();
+            if (data.error) { this.toast(data.error, 'error'); return; }
+            this.toast('Hesabınız oluşturuldu! Giriş yapabilirsiniz.', 'success');
+            this.switchAuthTab('login');
+            document.getElementById('login-email').value = email;
+            document.getElementById('login-password').value = '';
+        } catch(e) {
+            this.toast('Sunucuya bağlanılamadı.', 'error');
+        }
+    }
+
+    // ── GERİ SAYIM ───────────────────────────────────────────────────────────
+
+    startCountdown(expiry) {
+        this.stopCountdown();
+        const el = document.getElementById('qr-countdown');
+        if (!el) return;
+        const update = () => {
+            const rem = expiry - Date.now();
+            if (rem <= 0) {
+                el.textContent = '⏱ Süre doldu';
+                el.classList.add('urgent');
+                this.stopCountdown();
+                return;
+            }
+            const m = Math.floor(rem / 60000);
+            const s = Math.floor((rem % 60000) / 1000);
+            el.textContent = `⏱ ${m}:${s.toString().padStart(2, '0')}`;
+            el.classList.toggle('urgent', rem < 60000);
+        };
+        update();
+        this._countdownTimer = setInterval(update, 1000);
+    }
+
+    stopCountdown() {
+        if (this._countdownTimer) { clearInterval(this._countdownTimer); this._countdownTimer = null; }
+        const el = document.getElementById('qr-countdown');
+        if (el) { el.textContent = '⏱ 5:00'; el.classList.remove('urgent'); }
+    }
+
     // ── UTILS ────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
         document.getElementById('login-password')?.addEventListener('keypress', e => {
             if (e.key === 'Enter') this.login();
+        });
+        document.getElementById('reg-password2')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') this.register();
         });
         document.getElementById('modal-overlay')?.addEventListener('click', e => {
             if (e.target === document.getElementById('modal-overlay')) this.closeModal();

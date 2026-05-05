@@ -97,7 +97,28 @@ def get_db():
     finally:
         db.close()
 
-# ── GİRİŞ ────────────────────────────────────────────────────────────────────
+# ── GİRİŞ & KAYIT ────────────────────────────────────────────────────────────
+
+@app.post("/register")
+def register(data: dict, db: Session = Depends(get_db)):
+    email    = data.get("email", "").strip()
+    name     = data.get("name", "").strip()
+    stud_no  = data.get("student_no", "").strip()
+    password = data.get("password", "")
+    if not email or not name or not stud_no or not password:
+        return {"error": "Tüm alanlar zorunlu"}
+    if len(password) < 6:
+        return {"error": "Şifre en az 6 karakter olmalı"}
+    if db.query(User).filter(User.email == email).first():
+        return {"error": "Bu e-posta zaten kayıtlı"}
+    max_id = db.query(func.max(User.id)).scalar() or 0
+    db.add(User(
+        id=max_id + 1, name=name, email=email,
+        password_hash=hash_pw(password),
+        role="student", student_no=stud_no,
+    ))
+    db.commit()
+    return {"status": "success"}
 
 @app.post("/login")
 def login(data: dict, db: Session = Depends(get_db)):
