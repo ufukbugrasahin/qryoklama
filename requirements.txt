@@ -1,6 +1,5 @@
 fastapi
 uvicorn
 sqlalchemy
-pymysql
-cryptography
+psycopg2-binary
 python-multipart
