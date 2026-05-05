@@ -1,6 +1,5 @@
 <!DOCTYPE html>
 <html lang="tr">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,7 +9,6 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
 
     <nav class="hidden" id="nav-main">
@@ -26,33 +24,30 @@
 
     <div class="container">
 
-        <!-- GİRİŞ -->
+        <!-- ── GİRİŞ ── -->
         <div id="view-login" class="auth-container glass-card animate-up">
             <h1>Hoş Geldiniz.</h1>
             <p class="subtitle">Akıllı QR Yoklama ve Takip Sistemi</p>
-
             <div class="input-group">
                 <label>Giriş Rolü</label>
                 <select id="login-role" onchange="app.handleRoleChange()">
                     <option value="student">Öğrenci</option>
                     <option value="teacher">Öğretim Görevlisi</option>
+                    <option value="admin">Yönetici</option>
                 </select>
             </div>
-
             <div class="input-group">
                 <label>E-Posta Adresi</label>
                 <input type="email" id="login-email" placeholder="isim@uni.edu.tr">
             </div>
-
             <div class="input-group">
                 <label>Şifre</label>
                 <input type="password" id="login-password" placeholder="••••••••">
             </div>
-
             <button class="btn btn-primary" onclick="app.login()">Sisteme Eriş</button>
         </div>
 
-        <!-- ÖĞRETMEN PANEL -->
+        <!-- ── ÖĞRETMEN PANELİ ── -->
         <div id="view-teacher" class="hidden animate-up">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:3rem;">
                 <div>
@@ -60,39 +55,26 @@
                     <p class="text-muted">Oturum başlatmak için bir ders seçin.</p>
                 </div>
                 <button class="btn" style="width:auto;padding:0.6rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
-                    onclick="app.showHistory()">
-                    📋 Geçmiş Yoklamalar
-                </button>
+                    onclick="app.showHistory()">📋 Geçmiş Yoklamalar</button>
             </div>
             <div class="course-grid" id="teacher-courses"></div>
         </div>
 
-        <!-- AKTİF OTURUM -->
+        <!-- ── AKTİF OTURUM ── -->
         <div id="view-session" class="hidden text-center animate-up">
             <div class="qr-view glass-card">
                 <h2 id="active-session-title" style="margin-bottom:0.5rem;">Ders</h2>
                 <p style="color:var(--text-secondary);font-size:0.9rem;">Yoklama oturumu aktif. Öğrenciler okutup katılabilir.</p>
-
-                <div class="qr-box">
-                    <div id="qr-output"></div>
-                </div>
-
+                <div class="qr-box"><div id="qr-output"></div></div>
                 <div style="margin:1rem 0;">
                     <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Manuel Giriş Kodu</p>
                     <div class="pin-display" id="session-pin">------</div>
                 </div>
-
                 <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;">
-                    <button class="btn btn-primary" style="background:var(--danger);max-width:220px;" onclick="app.closeSession()">
-                        Oturumu Sonlandır
-                    </button>
-                    <button class="btn" style="max-width:180px;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
-                        onclick="app.printCurrentSession()">
-                        🖨️ Listeyi Yazdır
-                    </button>
+                    <button class="btn btn-primary" style="background:var(--danger);max-width:220px;" onclick="app.closeSession()">Oturumu Sonlandır</button>
+                    <button class="btn" style="max-width:180px;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);" onclick="app.printCurrentSession()">🖨️ Listeyi Yazdır</button>
                 </div>
             </div>
-
             <div class="attendance-list glass-card" style="padding:2rem;margin-top:2rem;">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
                     <h3>Katılım Listesi</h3>
@@ -104,28 +86,22 @@
             </div>
         </div>
 
-        <!-- ÖĞRENCİ PANEL -->
+        <!-- ── ÖĞRENCİ PANELİ ── -->
         <div id="view-student" class="hidden text-center animate-up">
             <div class="glass-card" style="max-width:500px;margin:4rem auto;padding:3rem;">
                 <h1 style="font-size:1.75rem;">Yoklamaya Katıl</h1>
                 <p class="subtitle">Kamera ile tarama yapın veya anahtar kodu girin.</p>
-
                 <div style="background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);padding:1.5rem;border-radius:1rem;margin-bottom:2rem;">
                     <label style="display:block;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-secondary);">6 HANELİ ANAHTAR</label>
                     <div style="display:flex;gap:0.5rem;">
-                        <input type="text" id="manual-code" maxlength="6"
-                            style="text-align:center;font-size:1.5rem;font-weight:800;letter-spacing:4px;" placeholder="000000">
+                        <input type="text" id="manual-code" maxlength="6" style="text-align:center;font-size:1.5rem;font-weight:800;letter-spacing:4px;" placeholder="000000">
                         <button class="btn btn-primary" style="width:auto;padding:0 1.5rem;" onclick="app.submitManual()">Onayla</button>
                     </div>
                 </div>
-
-                <div id="scanner-container" class="hidden"
-                    style="margin-bottom:1.5rem;border-radius:1rem;overflow:hidden;border:2px solid var(--accent);"></div>
-
+                <div id="scanner-container" class="hidden" style="margin-bottom:1.5rem;border-radius:1rem;overflow:hidden;border:2px solid var(--accent);"></div>
                 <button class="btn btn-primary" id="btn-scan" onclick="app.startScan()">Kamerayı Başlat</button>
-
-                <div id="success-overlay" class="hidden"
-                    style="margin-top:2rem;background:rgba(16,185,129,0.1);border:1px solid var(--success);padding:1.5rem;border-radius:1rem;">
+                <button class="btn" style="margin-top:0.75rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);" onclick="app.showStudentHistory()">📋 Yoklama Geçmişim</button>
+                <div id="success-overlay" class="hidden" style="margin-top:2rem;background:rgba(16,185,129,0.1);border:1px solid var(--success);padding:1.5rem;border-radius:1rem;">
                     <div style="color:var(--success);font-size:2rem;margin-bottom:0.5rem;">✓</div>
                     <div style="font-weight:800;color:var(--success);">Yoklamanız Başarıyla Alındı!</div>
                     <div style="font-size:0.8rem;color:var(--text-secondary);">Ders: <span id="success-course-name">--</span></div>
@@ -133,26 +109,79 @@
             </div>
         </div>
 
-        <!-- GEÇMİŞ YOKLAMALAR -->
+        <!-- ── ÖĞRENCİ GEÇMİŞ ── -->
+        <div id="view-student-history" class="hidden animate-up">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;flex-wrap:wrap;">
+                <button class="btn" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                    onclick="app.switchView('view-student')">← Geri</button>
+                <div>
+                    <h1 style="font-size:2rem;">Yoklama Geçmişim</h1>
+                    <p class="text-muted">Katıldığınız tüm dersler</p>
+                </div>
+            </div>
+            <div id="student-history-list"></div>
+        </div>
+
+        <!-- ── ÖĞRETMEN GEÇMİŞ ── -->
         <div id="view-history" class="hidden animate-up">
             <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;flex-wrap:wrap;">
                 <button class="btn" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
-                    onclick="app.switchView('view-teacher');app.renderTeacherCourses();">
-                    ← Geri
-                </button>
+                    onclick="app.switchView('view-teacher');app.renderTeacherCourses();">← Geri</button>
                 <div>
                     <h1 style="font-size:2rem;">Geçmiş Yoklamalar</h1>
-                    <p class="text-muted">Tüm yoklama oturumlarınız — tarih, ders ve katılım listesi</p>
+                    <p class="text-muted">Tüm yoklama oturumlarınız</p>
                 </div>
             </div>
             <div id="history-list"></div>
         </div>
 
+        <!-- ── ADMİN PANELİ ── -->
+        <div id="view-admin" class="hidden animate-up">
+            <div style="margin-bottom:2rem;">
+                <h1 style="font-size:2rem;">Yönetim Paneli</h1>
+                <p class="text-muted">Kullanıcı ve ders yönetimi</p>
+            </div>
+
+            <!-- Tabs -->
+            <div class="admin-tabs">
+                <button id="tab-btn-users" class="admin-tab-btn tab-active" onclick="app.switchAdminTab('users')">👥 Kullanıcılar</button>
+                <button id="tab-btn-courses" class="admin-tab-btn" onclick="app.switchAdminTab('courses')">📚 Dersler</button>
+            </div>
+
+            <!-- Users Panel -->
+            <div id="admin-users-panel">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                    <h3 style="font-size:1rem;">Kullanıcılar</h3>
+                    <button class="btn btn-primary" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;" onclick="app.openUserModal()">+ Kullanıcı Ekle</button>
+                </div>
+                <div id="admin-users-list"></div>
+            </div>
+
+            <!-- Courses Panel -->
+            <div id="admin-courses-panel" class="hidden">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.25rem;">
+                    <h3 style="font-size:1rem;">Dersler</h3>
+                    <button class="btn btn-primary" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;" onclick="app.openCourseModal()">+ Ders Ekle</button>
+                </div>
+                <div id="admin-courses-list"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ── MODAL ── -->
+    <div id="modal-overlay" class="hidden modal-overlay">
+        <div class="modal-card glass-card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                <h3 id="modal-title" style="font-size:1.1rem;"></h3>
+                <button onclick="app.closeModal()" style="background:none;border:none;color:var(--text-secondary);font-size:1.25rem;cursor:pointer;padding:0.25rem;">✕</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="app.js"></script>
 </body>
-
 </html>

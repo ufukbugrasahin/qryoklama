@@ -270,5 +270,116 @@ input:focus, select:focus {
     .pin-display { font-size: 2rem; }
 }
 
-/* Geçmiş yoklama kartlarındaki "hidden" utility */
+/* Utility */
 .hidden { display: none !important; }
+
+/* ── ADMİN TABS ── */
+.admin-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--glass-border);
+    padding-bottom: 0;
+}
+.admin-tab-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 600;
+    padding: 0.6rem 1.25rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+.admin-tab-btn:hover { color: var(--text-primary); }
+.admin-tab-btn.tab-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* ── ADMİN LIST ── */
+.admin-list-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.9rem 1.25rem;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    border-radius: 1rem;
+    margin-bottom: 0.6rem;
+    transition: background 0.2s;
+}
+.admin-list-item:hover { background: rgba(30,41,59,0.9); }
+
+.admin-list-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+
+.role-badge {
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 0.2rem 0.6rem;
+    border-radius: 0.5rem;
+    white-space: nowrap;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.btn-icon {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--glass-border);
+    color: var(--text-primary);
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+    flex-shrink: 0;
+}
+.btn-icon:hover { background: rgba(255,255,255,0.12); }
+.btn-icon.btn-danger:hover { background: rgba(239,68,68,0.2); border-color: var(--danger); }
+
+/* ── MODAL ── */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+.modal-overlay.hidden { display: none !important; }
+
+.modal-card {
+    width: 100%;
+    max-width: 480px;
+    padding: 2rem;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+@media (max-width: 640px) {
+    .container { padding: 1rem; }
+    .auth-container { padding: 1.5rem; margin-top: 2rem; }
+    h1 { font-size: 1.75rem; }
+    .pin-display { font-size: 2rem; }
+    .admin-list-item { flex-wrap: wrap; }
+}
