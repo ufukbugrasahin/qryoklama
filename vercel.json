@@ -1,7 +1,9 @@
 {
   "rewrites": [
-    { "source": "/sync",           "destination": "/api/index" },
-    { "source": "/teacher/:path*", "destination": "/api/index" },
-    { "source": "/(.*)",           "destination": "/index.html" }
+    { "source": "/sync",            "destination": "/api/index" },
+    { "source": "/teacher/:path*",  "destination": "/api/index" },
+    { "source": "/student/:path*",  "destination": "/api/index" },
+    { "source": "/admin/:path*",    "destination": "/api/index" },
+    { "source": "/(.*)",            "destination": "/index.html" }
   ]
 }

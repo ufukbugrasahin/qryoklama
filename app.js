@@ -1,11 +1,9 @@
 /**
  * QR YOKLAMA SİSTEMİ
- * PHP kaldırıldı → FastAPI backend
- *
  * SERVER_URL: Sunucu URL'ini buraya yaz (örn. "http://192.168.1.100:8000")
- * Yerel geliştirmede boş bırak ("") — FastAPI ile aynı origin'den çalışır.
+ * Vercel'de aynı origin olduğu için boş bırak.
  */
-const SERVER_URL = "";   // ← Sunucu gelince buraya yaz
+const SERVER_URL = "";
 
 const CONFIG = {
     API_BASE:      SERVER_URL,
@@ -15,11 +13,12 @@ const CONFIG = {
 
 const INITIAL_STATE = {
     users: [
-        { id: 101, email: "ufuk@uni.edu.tr",     password: "123", role: "student", name: "Ufuk Buğra Şahin",  student_no: "20202020" },
-        { id: 102, email: "peri@uni.edu.tr",     password: "123", role: "teacher", name: "Peri Güneş",         department: "Bilgisayar Mühendisliği" },
-        { id: 103, email: "boran@uni.edu.tr",    password: "123", role: "student", name: "Boran Özsoy",        student_no: "20202021" },
-        { id: 104, email: "enes@uni.edu.tr",     password: "123", role: "student", name: "Enes Cinipi",        student_no: "20202022" },
-        { id: 105, email: "ogrenci@uni.edu.tr",  password: "123", role: "student", name: "Deneme Öğrencisi",   student_no: "20200000" }
+        { id: 100, email: "admin@uni.edu.tr",    password: "admin123", role: "admin",   name: "Sistem Yöneticisi" },
+        { id: 101, email: "ufuk@uni.edu.tr",     password: "123",      role: "student", name: "Ufuk Buğra Şahin",  student_no: "20202020" },
+        { id: 102, email: "peri@uni.edu.tr",     password: "123",      role: "teacher", name: "Peri Güneş",         department: "Bilgisayar Mühendisliği" },
+        { id: 103, email: "boran@uni.edu.tr",    password: "123",      role: "student", name: "Boran Özsoy",        student_no: "20202021" },
+        { id: 104, email: "enes@uni.edu.tr",     password: "123",      role: "student", name: "Enes Cinipi",        student_no: "20202022" },
+        { id: 105, email: "ogrenci@uni.edu.tr",  password: "123",      role: "student", name: "Deneme Öğrencisi",   student_no: "20200000" }
     ],
     courses: [
         { id: 501, code: "BLG301", name: "Yazılım Mühendisliği",  teacher_id: 102 },
@@ -35,6 +34,10 @@ class AttendanceApp {
         this.currentUser = null;
         this.scanner     = null;
         this.historyData = [];
+        this.adminUsers  = [];
+        this.adminCourses = [];
+        this.editingUser  = null;
+        this.editingCourse = null;
         this.init();
     }
 
@@ -52,7 +55,6 @@ class AttendanceApp {
             const res = await fetch(`${CONFIG.API_BASE}/sync?t=${Date.now()}`);
             if (!res.ok) return;
             const data = await res.json();
-
             if (data && data.users && data.users.length > 0) {
                 data.users.forEach(u => u.id = parseInt(u.id));
                 data.courses.forEach(c => { c.id = parseInt(c.id); c.teacher_id = parseInt(c.teacher_id); });
@@ -61,9 +63,7 @@ class AttendanceApp {
             } else if (data && data.first_run) {
                 await this.syncToCloud();
             }
-        } catch (e) {
-            console.error("Sync hatası:", e);
-        }
+        } catch (e) { console.error("Sync hatası:", e); }
     }
 
     async syncToCloud() {
@@ -73,9 +73,7 @@ class AttendanceApp {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(this.db)
             });
-        } catch (e) {
-            console.error("Cloud kayıt hatası:", e);
-        }
+        } catch (e) { console.error("Cloud kayıt hatası:", e); }
     }
 
     startBackgroundPoller() {
@@ -100,11 +98,10 @@ class AttendanceApp {
     }
 
     switchView(viewId) {
-        ['view-login', 'view-teacher', 'view-session', 'view-student', 'view-history'].forEach(v => {
+        ['view-login','view-teacher','view-session','view-student','view-history','view-admin','view-student-history'].forEach(v => {
             document.getElementById(v)?.classList.add('hidden');
         });
         document.getElementById(viewId)?.classList.remove('hidden');
-
         const nav = document.getElementById('nav-main');
         if (viewId === 'view-login') nav.classList.add('hidden');
         else nav.classList.remove('hidden');
@@ -112,8 +109,9 @@ class AttendanceApp {
 
     handleRoleChange() {
         const role = document.getElementById('login-role').value;
-        document.getElementById('login-email').value    = role === 'teacher' ? 'peri@uni.edu.tr' : 'ufuk@uni.edu.tr';
-        document.getElementById('login-password').value = '123';
+        const map = { student: 'ufuk@uni.edu.tr', teacher: 'peri@uni.edu.tr', admin: 'admin@uni.edu.tr' };
+        document.getElementById('login-email').value    = map[role] || '';
+        document.getElementById('login-password').value = role === 'admin' ? 'admin123' : '123';
     }
 
     // ── GİRİŞ ───────────────────────────────────────────────────────────────
@@ -140,11 +138,15 @@ class AttendanceApp {
 
     showDashboard() {
         document.getElementById('user-display-name').innerText = this.currentUser.name;
-        document.getElementById('user-display-role').innerText =
-            this.currentUser.role === 'teacher' ? 'Öğretim Görevlisi' : 'Öğrenci';
+        const roleLabel = { teacher: 'Öğretim Görevlisi', student: 'Öğrenci', admin: 'Yönetici' };
+        document.getElementById('user-display-role').innerText = roleLabel[this.currentUser.role] || '';
+
         if (this.currentUser.role === 'teacher') {
             this.renderTeacherCourses();
             this.switchView('view-teacher');
+        } else if (this.currentUser.role === 'admin') {
+            this.switchView('view-admin');
+            this.loadAdminData();
         } else {
             this.switchView('view-student');
         }
@@ -197,7 +199,7 @@ class AttendanceApp {
         const container = document.getElementById('attendee-list-container');
         document.getElementById('attendee-count').innerText = this.db.records.length;
         if (this.db.records.length === 0) {
-            container.innerHTML = '<div style="padding:2rem;" class="text-muted text-center">Öğrenci bekleniyor...</div>';
+            container.innerHTML = '<div style="padding:2rem;color:var(--text-secondary);text-align:center;">Öğrenci bekleniyor...</div>';
             return;
         }
         container.innerHTML = '';
@@ -216,33 +218,22 @@ class AttendanceApp {
         });
     }
 
-    /** Aktif oturumdaki listeyi yazdır */
     printCurrentSession() {
         if (this.db.records.length === 0) { alert("Henüz katılımcı yok."); return; }
         const course = this.db.courses.find(c => c.id === this.db.active_session?.course_id);
-        const attendees = this.db.records
-            .map(id => this.db.users.find(u => u.id === parseInt(id)))
-            .filter(Boolean);
-        this.printSession({
-            course_code: course?.code || '',
-            course_name: course?.name || 'Ders',
-            date:        new Date().toLocaleString('tr-TR'),
-            attendees
-        });
+        const attendees = this.db.records.map(id => this.db.users.find(u => u.id === parseInt(id))).filter(Boolean);
+        this.printSession({ course_code: course?.code || '', course_name: course?.name || 'Ders', date: new Date().toLocaleString('tr-TR'), attendees });
     }
 
-    // ── GEÇMİŞ YOKLAMALAR ────────────────────────────────────────────────────
+    // ── GEÇMİŞ YOKLAMALAR (ÖĞRETMEN) ─────────────────────────────────────────
 
     async showHistory() {
         this.switchView('view-history');
-        document.getElementById('history-list').innerHTML =
-            '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Yükleniyor...</div>';
+        document.getElementById('history-list').innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Yükleniyor...</div>';
         try {
             const res = await fetch(`${CONFIG.API_BASE}/teacher/${this.currentUser.id}/history`);
             this.historyData = res.ok ? await res.json() : [];
-        } catch (e) {
-            this.historyData = [];
-        }
+        } catch (e) { this.historyData = []; }
         this.renderHistory();
     }
 
@@ -266,18 +257,10 @@ class AttendanceApp {
                         <div style="font-weight:700;font-size:1rem;">${s.course_name}</div>
                         <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">📅 ${s.date}</div>
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.75rem;">
-                        <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">
-                            ${s.attendee_count} ÖĞRENCİ
-                        </div>
-                        <button class="btn btn-primary" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;"
-                            onclick="app.toggleHistoryDetail(${idx})">
-                            Listele
-                        </button>
-                        <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--glass-border);"
-                            onclick="app.printHistorySession(${idx})">
-                            🖨️ Yazdır
-                        </button>
+                    <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+                        <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">${s.attendee_count} ÖĞRENCİ</div>
+                        <button class="btn btn-primary" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;" onclick="app.toggleHistoryDetail(${idx})">Listele</button>
+                        <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--glass-border);" onclick="app.printHistorySession(${idx})">🖨️ Yazdır</button>
                     </div>
                 </div>
                 <div id="history-detail-${idx}" class="hidden" style="margin-top:1rem;border-top:1px solid var(--glass-border);padding-top:1rem;"></div>`;
@@ -295,18 +278,12 @@ class AttendanceApp {
 
     renderHistoryDetail(idx, container) {
         const s = this.historyData[idx];
-        if (!s.attendees.length) {
-            container.innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;">Bu oturuma katılım kaydı yok.</div>';
-            return;
-        }
+        if (!s.attendees.length) { container.innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;">Katılım kaydı yok.</div>'; return; }
         container.innerHTML = s.attendees.map((a, i) => `
             <div class="list-item" style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
                 <div style="display:flex;align-items:center;gap:1rem;">
-                    <div style="color:var(--text-secondary);font-size:0.75rem;min-width:1.5rem;">${i + 1}.</div>
-                    <div>
-                        <div style="font-weight:700;">${a.name}</div>
-                        <div style="font-size:0.7rem;color:var(--text-secondary);">${a.student_no}</div>
-                    </div>
+                    <div style="color:var(--text-secondary);font-size:0.75rem;min-width:1.5rem;">${i+1}.</div>
+                    <div><div style="font-weight:700;">${a.name}</div><div style="font-size:0.7rem;color:var(--text-secondary);">${a.student_no}</div></div>
                 </div>
                 <div class="status-present">KATILDI</div>
             </div>`).join('');
@@ -314,70 +291,82 @@ class AttendanceApp {
 
     printHistorySession(idx) {
         const s = this.historyData[idx];
-        this.printSession({
-            course_code: s.course_code,
-            course_name: s.course_name,
-            date:        s.date,
-            attendees:   s.attendees.map(a => ({ name: a.name, student_no: a.student_no }))
+        this.printSession({ course_code: s.course_code, course_name: s.course_name, date: s.date, attendees: s.attendees });
+    }
+
+    // ── GEÇMİŞ (ÖĞRENCİ) ────────────────────────────────────────────────────
+
+    async showStudentHistory() {
+        this.switchView('view-student-history');
+        document.getElementById('student-history-list').innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Yükleniyor...</div>';
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/student/${this.currentUser.id}/history`);
+            const data = res.ok ? await res.json() : [];
+            this.renderStudentHistory(data);
+        } catch (e) {
+            document.getElementById('student-history-list').innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Veri alınamadı.</div>';
+        }
+    }
+
+    renderStudentHistory(data) {
+        const container = document.getElementById('student-history-list');
+        if (!data.length) {
+            container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Henüz katıldığınız bir ders yok.</div>';
+            return;
+        }
+        const grouped = {};
+        data.forEach(r => {
+            if (!grouped[r.course_code]) grouped[r.course_code] = { name: r.course_name, records: [] };
+            grouped[r.course_code].records.push(r);
         });
+        container.innerHTML = Object.entries(grouped).map(([code, g]) => `
+            <div class="glass-card" style="padding:1.5rem;margin-bottom:1rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+                    <div>
+                        <div style="color:var(--accent);font-weight:800;font-size:0.7rem;">${code}</div>
+                        <div style="font-weight:700;">${g.name}</div>
+                    </div>
+                    <div style="background:rgba(16,185,129,0.1);color:var(--success);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">${g.records.length} KATILIM</div>
+                </div>
+                ${g.records.map(r => `
+                    <div style="display:flex;justify-content:space-between;padding:0.5rem 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.85rem;">
+                        <span>📅 ${r.date}</span>
+                        <span class="status-present" style="font-size:0.7rem;">KATILDI</span>
+                    </div>`).join('')}
+            </div>`).join('');
     }
 
     // ── YAZDIR ───────────────────────────────────────────────────────────────
 
     printSession({ course_code, course_name, date, attendees }) {
-        const rows = attendees.map((a, i) => `
-            <tr>
-                <td>${i + 1}</td>
-                <td>${a.name || ''}</td>
-                <td>${a.student_no || ''}</td>
-                <td style="text-align:center;">✓</td>
-            </tr>`).join('');
-
+        const rows = attendees.map((a, i) => `<tr><td>${i+1}</td><td>${a.name||''}</td><td>${a.student_no||''}</td><td style="text-align:center;">✓</td></tr>`).join('');
         const win = window.open('', '_blank', 'width=800,height=600');
-        win.document.write(`<!DOCTYPE html><html lang="tr"><head>
-            <meta charset="UTF-8">
-            <title>Yoklama Listesi - ${course_name}</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 2rem; color: #111; }
-                h2 { margin: 0 0 0.25rem; }
-                .meta { font-size: 0.85rem; color: #555; margin-bottom: 1.5rem; }
-                table { width: 100%; border-collapse: collapse; }
-                th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; font-size: 0.9rem; }
-                th { background: #f0f0f0; font-weight: 700; }
-                tr:nth-child(even) { background: #fafafa; }
-                .footer { margin-top: 2rem; font-size: 0.8rem; color: #888; border-top: 1px solid #ccc; padding-top: 0.5rem; }
-                @media print { button { display: none; } }
-            </style>
-        </head><body>
-            <h2>${course_code} — ${course_name}</h2>
-            <div class="meta">📅 Tarih: ${date} &nbsp;|&nbsp; Toplam: ${attendees.length} öğrenci</div>
-            <table>
-                <thead><tr><th>#</th><th>Ad Soyad</th><th>Öğrenci No</th><th>İmza</th></tr></thead>
-                <tbody>${rows}</tbody>
-            </table>
-            <div class="footer">QR Yoklama Sistemi — ${new Date().toLocaleString('tr-TR')}</div>
-            <br><button onclick="window.print()">🖨️ Yazdır</button>
-        </body></html>`);
-        win.document.close();
-        win.focus();
+        win.document.write(`<!DOCTYPE html><html lang="tr"><head><meta charset="UTF-8"><title>Yoklama - ${course_name}</title>
+        <style>body{font-family:Arial,sans-serif;margin:2rem;color:#111;}h2{margin:0 0 0.25rem;}
+        .meta{font-size:0.85rem;color:#555;margin-bottom:1.5rem;}table{width:100%;border-collapse:collapse;}
+        th,td{border:1px solid #ccc;padding:0.5rem 0.75rem;font-size:0.9rem;}th{background:#f0f0f0;font-weight:700;}
+        tr:nth-child(even){background:#fafafa;}.footer{margin-top:2rem;font-size:0.8rem;color:#888;border-top:1px solid #ccc;padding-top:0.5rem;}
+        @media print{button{display:none;}}</style></head><body>
+        <h2>${course_code} — ${course_name}</h2>
+        <div class="meta">📅 ${date} &nbsp;|&nbsp; Toplam: ${attendees.length} öğrenci</div>
+        <table><thead><tr><th>#</th><th>Ad Soyad</th><th>Öğrenci No</th><th>İmza</th></tr></thead><tbody>${rows}</tbody></table>
+        <div class="footer">QR Yoklama Sistemi — ${new Date().toLocaleString('tr-TR')}</div>
+        <br><button onclick="window.print()">🖨️ Yazdır</button></body></html>`);
+        win.document.close(); win.focus();
     }
 
-    // ── ÖĞRENCİ ─────────────────────────────────────────────────────────────
+    // ── ÖĞRENCİ YOKLAMA ─────────────────────────────────────────────────────
 
     async startScan() {
         const container = document.getElementById('scanner-container');
         document.getElementById('btn-scan').classList.add('hidden');
         container.classList.remove('hidden');
         this.scanner = new Html5Qrcode("scanner-container");
-        this.scanner.start(
-            { facingMode: "environment" },
-            { fps: 10, qrbox: 250 },
-            (decodedText) => {
-                this.stopScan();
-                const m = decodedText.match(/session=([^&]+)/);
-                this.processAttendance(m ? m[1] : decodedText);
-            }
-        ).catch(() => this.stopScan());
+        this.scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (decodedText) => {
+            this.stopScan();
+            const m = decodedText.match(/session=([^&]+)/);
+            this.processAttendance(m ? m[1] : decodedText);
+        }).catch(() => this.stopScan());
     }
 
     stopScan() {
@@ -394,9 +383,7 @@ class AttendanceApp {
         await this.syncFromCloud();
         if (this.db.active_session && this.db.active_session.pin === code) {
             await this.processAttendance(this.db.active_session.qr_data);
-        } else {
-            alert("Hatalı Kod!");
-        }
+        } else { alert("Hatalı Kod!"); }
     }
 
     async processAttendance(qrData) {
@@ -409,12 +396,212 @@ class AttendanceApp {
                 const course = this.db.courses.find(c => c.id === this.db.active_session.course_id);
                 document.getElementById('success-course-name').innerText = course ? course.name : "Ders";
                 document.getElementById('success-overlay').classList.remove('hidden');
-            } else {
-                alert("Zaten katıldınız!");
-            }
-        } else {
-            alert("Geçersiz Oturum!");
-        }
+            } else { alert("Zaten katıldınız!"); }
+        } else { alert("Geçersiz Oturum!"); }
+    }
+
+    // ── ADMİN PANELİ ─────────────────────────────────────────────────────────
+
+    async loadAdminData() {
+        this.switchAdminTab('users');
+        await this.refreshAdminUsers();
+    }
+
+    switchAdminTab(tab) {
+        document.getElementById('admin-users-panel').classList.toggle('hidden', tab !== 'users');
+        document.getElementById('admin-courses-panel').classList.toggle('hidden', tab !== 'courses');
+        document.getElementById('tab-btn-users').classList.toggle('tab-active', tab === 'users');
+        document.getElementById('tab-btn-courses').classList.toggle('tab-active', tab === 'courses');
+        if (tab === 'courses') this.refreshAdminCourses();
+        if (tab === 'users')   this.refreshAdminUsers();
+    }
+
+    async refreshAdminUsers() {
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/admin/users`);
+            this.adminUsers = res.ok ? await res.json() : [];
+        } catch(e) { this.adminUsers = []; }
+        this.renderAdminUsers();
+    }
+
+    async refreshAdminCourses() {
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/admin/courses`);
+            this.adminCourses = res.ok ? await res.json() : [];
+        } catch(e) { this.adminCourses = []; }
+        this.renderAdminCourses();
+    }
+
+    renderAdminUsers() {
+        const container = document.getElementById('admin-users-list');
+        const roleBadge = { student: ['#10b981','Öğrenci'], teacher: ['#3b82f6','Öğretmen'], admin: ['#f59e0b','Admin'] };
+        container.innerHTML = this.adminUsers.length === 0
+            ? '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Kullanıcı yok.</div>'
+            : this.adminUsers.map(u => {
+                const [color, label] = roleBadge[u.role] || ['#94a3b8', u.role];
+                return `
+                <div class="admin-list-item">
+                    <div class="admin-list-avatar" style="background:${color}22;color:${color};">${u.name[0]}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u.name}</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">${u.email}</div>
+                        ${u.student_no ? `<div style="font-size:0.7rem;color:var(--text-secondary);">No: ${u.student_no}</div>` : ''}
+                    </div>
+                    <span class="role-badge" style="background:${color}22;color:${color};">${label}</span>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn-icon" onclick="app.openUserModal(${u.id})">✏️</button>
+                        <button class="btn-icon btn-danger" onclick="app.deleteUser(${u.id},'${u.name}')">🗑️</button>
+                    </div>
+                </div>`;
+            }).join('');
+    }
+
+    renderAdminCourses() {
+        const container = document.getElementById('admin-courses-list');
+        container.innerHTML = this.adminCourses.length === 0
+            ? '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Ders yok.</div>'
+            : this.adminCourses.map(c => `
+                <div class="admin-list-item">
+                    <div class="admin-list-avatar" style="background:rgba(59,130,246,0.15);color:var(--accent);">${c.code[0]}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;">${c.name}</div>
+                        <div style="font-size:0.75rem;color:var(--text-secondary);">${c.code} &nbsp;·&nbsp; ${c.teacher_name || 'Öğretmen atanmamış'}</div>
+                    </div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn-icon" onclick="app.openCourseModal(${c.id})">✏️</button>
+                        <button class="btn-icon btn-danger" onclick="app.deleteCourse(${c.id},'${c.name}')">🗑️</button>
+                    </div>
+                </div>`).join('');
+    }
+
+    // ── KULLANICI MODAL ───────────────────────────────────────────────────────
+
+    async openUserModal(userId = null) {
+        this.editingUser = userId ? this.adminUsers.find(u => u.id === userId) : null;
+        const u = this.editingUser;
+        document.getElementById('modal-title').innerText = u ? 'Kullanıcı Düzenle' : 'Kullanıcı Ekle';
+        document.getElementById('modal-body').innerHTML = `
+            <div class="input-group"><label>Ad Soyad</label>
+                <input type="text" id="m-name" value="${u?.name||''}"></div>
+            <div class="input-group"><label>E-posta</label>
+                <input type="email" id="m-email" value="${u?.email||''}"></div>
+            <div class="input-group"><label>${u ? 'Yeni Şifre (boş = değişmez)' : 'Şifre'}</label>
+                <input type="password" id="m-password" placeholder="••••••"></div>
+            <div class="input-group"><label>Rol</label>
+                <select id="m-role" onchange="app.toggleModalRole()">
+                    <option value="student" ${u?.role==='student'?'selected':''}>Öğrenci</option>
+                    <option value="teacher" ${u?.role==='teacher'?'selected':''}>Öğretmen</option>
+                    <option value="admin"   ${u?.role==='admin'  ?'selected':''}>Admin</option>
+                </select></div>
+            <div id="m-student-fields" class="${(u?.role||'student')==='student'?'':'hidden'}">
+                <div class="input-group"><label>Öğrenci No</label>
+                    <input type="text" id="m-student-no" value="${u?.student_no||''}"></div>
+            </div>
+            <div id="m-teacher-fields" class="${u?.role==='teacher'?'':'hidden'}">
+                <div class="input-group"><label>Departman</label>
+                    <input type="text" id="m-department" value="${u?.department||''}"></div>
+            </div>
+            <div style="display:flex;gap:0.75rem;margin-top:1.5rem;">
+                <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);" onclick="app.closeModal()">İptal</button>
+                <button class="btn btn-primary" onclick="app.saveUser()">Kaydet</button>
+            </div>`;
+        document.getElementById('modal-overlay').classList.remove('hidden');
+    }
+
+    toggleModalRole() {
+        const role = document.getElementById('m-role').value;
+        document.getElementById('m-student-fields').classList.toggle('hidden', role !== 'student');
+        document.getElementById('m-teacher-fields').classList.toggle('hidden', role !== 'teacher');
+    }
+
+    async saveUser() {
+        const data = {
+            name:       document.getElementById('m-name').value.trim(),
+            email:      document.getElementById('m-email').value.trim(),
+            password:   document.getElementById('m-password').value,
+            role:       document.getElementById('m-role').value,
+            student_no: document.getElementById('m-student-no')?.value.trim() || '',
+            department: document.getElementById('m-department')?.value.trim() || '',
+        };
+        if (!data.name || !data.email) { alert("Ad ve e-posta zorunlu."); return; }
+
+        const url    = this.editingUser ? `/admin/users/${this.editingUser.id}` : '/admin/users';
+        const method = this.editingUser ? 'PUT' : 'POST';
+        const res = await fetch(`${CONFIG.API_BASE}${url}`, {
+            method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.error) { alert(result.error); return; }
+        this.closeModal();
+        await this.refreshAdminUsers();
+        await this.syncFromCloud();
+    }
+
+    async deleteUser(userId, name) {
+        if (!confirm(`"${name}" silinsin mi?`)) return;
+        await fetch(`${CONFIG.API_BASE}/admin/users/${userId}`, { method: 'DELETE' });
+        await this.refreshAdminUsers();
+        await this.syncFromCloud();
+    }
+
+    // ── DERS MODAL ────────────────────────────────────────────────────────────
+
+    async openCourseModal(courseId = null) {
+        this.editingCourse = courseId ? this.adminCourses.find(c => c.id === courseId) : null;
+        const c = this.editingCourse;
+        let teachers = [];
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/admin/teachers`);
+            teachers = res.ok ? await res.json() : [];
+        } catch(e) {}
+
+        document.getElementById('modal-title').innerText = c ? 'Ders Düzenle' : 'Ders Ekle';
+        document.getElementById('modal-body').innerHTML = `
+            <div class="input-group"><label>Ders Kodu</label>
+                <input type="text" id="m-code" value="${c?.code||''}" placeholder="BLG301"></div>
+            <div class="input-group"><label>Ders Adı</label>
+                <input type="text" id="m-cname" value="${c?.name||''}"></div>
+            <div class="input-group"><label>Öğretmen</label>
+                <select id="m-teacher">
+                    ${teachers.map(t => `<option value="${t.id}" ${c?.teacher_id===t.id?'selected':''}>${t.name}</option>`).join('')}
+                </select></div>
+            <div style="display:flex;gap:0.75rem;margin-top:1.5rem;">
+                <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);" onclick="app.closeModal()">İptal</button>
+                <button class="btn btn-primary" onclick="app.saveCourse()">Kaydet</button>
+            </div>`;
+        document.getElementById('modal-overlay').classList.remove('hidden');
+    }
+
+    async saveCourse() {
+        const data = {
+            code:       document.getElementById('m-code').value.trim(),
+            name:       document.getElementById('m-cname').value.trim(),
+            teacher_id: document.getElementById('m-teacher').value,
+        };
+        if (!data.code || !data.name) { alert("Kod ve ad zorunlu."); return; }
+        const url    = this.editingCourse ? `/admin/courses/${this.editingCourse.id}` : '/admin/courses';
+        const method = this.editingCourse ? 'PUT' : 'POST';
+        const res = await fetch(`${CONFIG.API_BASE}${url}`, {
+            method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data)
+        });
+        const result = await res.json();
+        if (result.error) { alert(result.error); return; }
+        this.closeModal();
+        await this.refreshAdminCourses();
+        await this.syncFromCloud();
+    }
+
+    async deleteCourse(courseId, name) {
+        if (!confirm(`"${name}" dersi silinsin mi?`)) return;
+        await fetch(`${CONFIG.API_BASE}/admin/courses/${courseId}`, { method: 'DELETE' });
+        await this.refreshAdminCourses();
+        await this.syncFromCloud();
+    }
+
+    closeModal() {
+        document.getElementById('modal-overlay').classList.add('hidden');
+        this.editingUser = null;
+        this.editingCourse = null;
     }
 
     // ── UTILS ────────────────────────────────────────────────────────────────
@@ -422,6 +609,9 @@ class AttendanceApp {
     setupEventListeners() {
         document.getElementById('login-password')?.addEventListener('keypress', e => {
             if (e.key === 'Enter') this.login();
+        });
+        document.getElementById('modal-overlay')?.addEventListener('click', e => {
+            if (e.target === document.getElementById('modal-overlay')) this.closeModal();
         });
     }
 }

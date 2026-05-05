@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, DateTime, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, Session
 
@@ -248,3 +248,133 @@ def teacher_history(teacher_id: int, db: Session = Depends(get_db)):
         })
 
     return result
+
+
+# ── ÖĞRETMEN GEÇMİŞ ─────────────────────────────────────────────────────────
+
+@app.get("/student/{student_id}/history")
+def student_history(student_id: int, db: Session = Depends(get_db)):
+    records = (
+        db.query(AttendanceRecord)
+        .filter(AttendanceRecord.student_id == student_id)
+        .all()
+    )
+
+    result = []
+    for r in records:
+        session = db.query(AttendanceSession).filter(AttendanceSession.id == r.session_id).first()
+        if not session:
+            continue
+        course = db.query(Course).filter(Course.id == session.course_id).first()
+        result.append({
+            "session_id":  session.id,
+            "course_code": course.course_code if course else "",
+            "course_name": course.course_name if course else "",
+            "date":        session.date.strftime("%d.%m.%Y %H:%M") if session.date else "",
+            "status":      r.status,
+        })
+
+    result.sort(key=lambda x: x["date"], reverse=True)
+    return result
+
+
+# ── ADMİN ────────────────────────────────────────────────────────────────────
+
+@app.get("/admin/users")
+def admin_get_users(db: Session = Depends(get_db)):
+    return [
+        {"id": u.id, "name": u.name, "email": u.email,
+         "role": u.role, "student_no": u.student_no or "", "department": u.department or ""}
+        for u in db.query(User).order_by(User.role, User.name).all()
+    ]
+
+@app.post("/admin/users")
+def admin_create_user(data: dict, db: Session = Depends(get_db)):
+    if db.query(User).filter(User.email == data["email"]).first():
+        return {"error": "Bu e-posta zaten kayıtlı"}
+    max_id = db.query(func.max(User.id)).scalar() or 0
+    db.add(User(
+        id=max_id + 1,
+        name=data["name"],
+        email=data["email"],
+        password_hash=data.get("password", "123"),
+        role=data["role"],
+        student_no=data.get("student_no") or None,
+        department=data.get("department") or None,
+    ))
+    db.commit()
+    return {"status": "success"}
+
+@app.put("/admin/users/{user_id}")
+def admin_update_user(user_id: int, data: dict, db: Session = Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        return {"error": "Kullanıcı bulunamadı"}
+    u.name       = data.get("name", u.name)
+    u.email      = data.get("email", u.email)
+    u.role       = data.get("role", u.role)
+    u.student_no = data.get("student_no") or None
+    u.department = data.get("department") or None
+    if data.get("password"):
+        u.password_hash = data["password"]
+    db.commit()
+    return {"status": "success"}
+
+@app.delete("/admin/users/{user_id}")
+def admin_delete_user(user_id: int, db: Session = Depends(get_db)):
+    u = db.query(User).filter(User.id == user_id).first()
+    if not u:
+        return {"error": "Kullanıcı bulunamadı"}
+    db.delete(u)
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/admin/courses")
+def admin_get_courses(db: Session = Depends(get_db)):
+    teachers = {u.id: u.name for u in db.query(User).filter(User.role == "teacher").all()}
+    return [
+        {"id": c.id, "code": c.course_code, "name": c.course_name,
+         "teacher_id": c.teacher_id, "teacher_name": teachers.get(c.teacher_id, "")}
+        for c in db.query(Course).order_by(Course.course_code).all()
+    ]
+
+@app.post("/admin/courses")
+def admin_create_course(data: dict, db: Session = Depends(get_db)):
+    if db.query(Course).filter(Course.course_code == data["code"]).first():
+        return {"error": "Bu ders kodu zaten mevcut"}
+    max_id = db.query(func.max(Course.id)).scalar() or 0
+    db.add(Course(
+        id=max_id + 1,
+        course_code=data["code"],
+        course_name=data["name"],
+        teacher_id=int(data["teacher_id"]),
+    ))
+    db.commit()
+    return {"status": "success"}
+
+@app.put("/admin/courses/{course_id}")
+def admin_update_course(course_id: int, data: dict, db: Session = Depends(get_db)):
+    c = db.query(Course).filter(Course.id == course_id).first()
+    if not c:
+        return {"error": "Ders bulunamadı"}
+    c.course_code = data.get("code", c.course_code)
+    c.course_name = data.get("name", c.course_name)
+    c.teacher_id  = int(data.get("teacher_id", c.teacher_id))
+    db.commit()
+    return {"status": "success"}
+
+@app.delete("/admin/courses/{course_id}")
+def admin_delete_course(course_id: int, db: Session = Depends(get_db)):
+    c = db.query(Course).filter(Course.id == course_id).first()
+    if not c:
+        return {"error": "Ders bulunamadı"}
+    db.delete(c)
+    db.commit()
+    return {"status": "success"}
+
+@app.get("/admin/teachers")
+def admin_get_teachers(db: Session = Depends(get_db)):
+    return [
+        {"id": u.id, "name": u.name}
+        for u in db.query(User).filter(User.role == "teacher").all()
+    ]
