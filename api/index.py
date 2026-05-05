@@ -1,4 +1,5 @@
 import os
+import bcrypt
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends
@@ -22,6 +23,17 @@ Base = declarative_base()
 TRT = timezone(timedelta(hours=3))
 def get_now():
     return datetime.now(TRT)
+
+def hash_pw(plain: str) -> str:
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+
+def verify_pw(plain: str, stored: str) -> bool:
+    try:
+        if stored.startswith("$2"):
+            return bcrypt.checkpw(plain.encode(), stored.encode())
+        return plain == stored  # plain-text fallback (migration)
+    except Exception:
+        return False
 
 # ── MODELLER ─────────────────────────────────────────────────────────────────
 
@@ -85,6 +97,20 @@ def get_db():
     finally:
         db.close()
 
+# ── GİRİŞ ────────────────────────────────────────────────────────────────────
+
+@app.post("/login")
+def login(data: dict, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.get("email", "")).first()
+    if not user or not verify_pw(data.get("password", ""), user.password_hash):
+        return {"error": "Hatalı e-posta veya şifre"}
+    return {
+        "id": user.id, "name": user.name, "email": user.email,
+        "role": user.role,
+        "student_no": user.student_no or "",
+        "department": user.department or "",
+    }
+
 # ── SYNC GET ─────────────────────────────────────────────────────────────────
 
 @app.get("/sync")
@@ -120,7 +146,7 @@ def sync_get(db: Session = Depends(get_db)):
     return {
         "users": [
             {"id": u.id, "name": u.name, "email": u.email,
-             "password": u.password_hash, "role": u.role,
+             "role": u.role,
              "student_no": u.student_no, "department": u.department}
             for u in users
         ],
@@ -140,11 +166,12 @@ def sync_post(data: dict, db: Session = Depends(get_db)):
     if data.get("users"):
         for u in data["users"]:
             if not db.query(User).filter(User.id == int(u["id"])).first():
+                plain = u.get("password", "123")
                 db.add(User(
                     id=int(u["id"]),
                     name=u["name"],
                     email=u["email"],
-                    password_hash=u.get("password", ""),
+                    password_hash=hash_pw(plain),
                     role=u["role"],
                     student_no=u.get("student_no"),
                     department=u.get("department"),
@@ -297,7 +324,7 @@ def admin_create_user(data: dict, db: Session = Depends(get_db)):
         id=max_id + 1,
         name=data["name"],
         email=data["email"],
-        password_hash=data.get("password", "123"),
+        password_hash=hash_pw(data.get("password", "123")),
         role=data["role"],
         student_no=data.get("student_no") or None,
         department=data.get("department") or None,
@@ -316,7 +343,7 @@ def admin_update_user(user_id: int, data: dict, db: Session = Depends(get_db)):
     u.student_no = data.get("student_no") or None
     u.department = data.get("department") or None
     if data.get("password"):
-        u.password_hash = data["password"]
+        u.password_hash = hash_pw(data["password"])
     db.commit()
     return {"status": "success"}
 
@@ -378,3 +405,63 @@ def admin_get_teachers(db: Session = Depends(get_db)):
         {"id": u.id, "name": u.name}
         for u in db.query(User).filter(User.role == "teacher").all()
     ]
+
+
+# ── İSTATİSTİK ───────────────────────────────────────────────────────────────
+
+@app.get("/teacher/{teacher_id}/stats")
+def teacher_stats(teacher_id: int, db: Session = Depends(get_db)):
+    courses    = db.query(Course).filter(Course.teacher_id == teacher_id).all()
+    course_map = {c.id: c for c in courses}
+    students   = db.query(User).filter(User.role == "student").count()
+
+    stats = []
+    for c in courses:
+        sessions = db.query(AttendanceSession).filter(
+            AttendanceSession.course_id == c.id,
+            AttendanceSession.is_active == False
+        ).all()
+        total_sessions = len(sessions)
+        attendance_counts = []
+        for s in sessions:
+            cnt = db.query(AttendanceRecord).filter(AttendanceRecord.session_id == s.id).count()
+            attendance_counts.append(cnt)
+        avg = round(sum(attendance_counts) / len(attendance_counts), 1) if attendance_counts else 0
+        stats.append({
+            "course_code":    c.course_code,
+            "course_name":    c.course_name,
+            "total_sessions": total_sessions,
+            "avg_attendance": avg,
+            "counts":         attendance_counts[-10:],  # son 10 oturum
+        })
+
+    return {"courses": stats, "total_students": students}
+
+
+@app.get("/student/{student_id}/stats")
+def student_stats(student_id: int, db: Session = Depends(get_db)):
+    records = db.query(AttendanceRecord).filter(AttendanceRecord.student_id == student_id).all()
+    session_ids = [r.session_id for r in records]
+
+    courses    = db.query(Course).all()
+    course_map = {c.id: c for c in courses}
+
+    result = {}
+    for r in records:
+        session = db.query(AttendanceSession).filter(AttendanceSession.id == r.session_id).first()
+        if not session:
+            continue
+        course = course_map.get(session.course_id)
+        if not course:
+            continue
+        cid = course.id
+        if cid not in result:
+            total = db.query(AttendanceSession).filter(
+                AttendanceSession.course_id == cid,
+                AttendanceSession.is_active == False
+            ).count()
+            result[cid] = {"code": course.course_code, "name": course.course_name,
+                           "attended": 0, "total": total}
+        result[cid]["attended"] += 1
+
+    return list(result.values())

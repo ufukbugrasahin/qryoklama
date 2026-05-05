@@ -8,6 +8,10 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#3b82f6">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 </head>
 <body>
 
@@ -54,8 +58,12 @@
                     <h1 style="font-size:2rem;">Ders Paneli</h1>
                     <p class="text-muted">Oturum başlatmak için bir ders seçin.</p>
                 </div>
-                <button class="btn" style="width:auto;padding:0.6rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
-                    onclick="app.showHistory()">📋 Geçmiş Yoklamalar</button>
+                <div style="display:flex;gap:0.75rem;flex-wrap:wrap;">
+                    <button class="btn" style="width:auto;padding:0.6rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                        onclick="app.showHistory()">📋 Geçmiş</button>
+                    <button class="btn" style="width:auto;padding:0.6rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                        onclick="app.showStats()">📊 İstatistikler</button>
+                </div>
             </div>
             <div class="course-grid" id="teacher-courses"></div>
         </div>
@@ -135,6 +143,22 @@
             <div id="history-list"></div>
         </div>
 
+        <!-- ── İSTATİSTİK ── -->
+        <div id="view-stats" class="hidden animate-up">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2rem;flex-wrap:wrap;">
+                <button class="btn" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                    onclick="app.switchView('view-teacher');app.renderTeacherCourses();">← Geri</button>
+                <div>
+                    <h1 style="font-size:2rem;">İstatistikler</h1>
+                    <p class="text-muted">Ders bazlı katılım analizi</p>
+                </div>
+                <button class="btn" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);margin-left:auto;"
+                    onclick="app.exportStatsExcel()">📥 Excel İndir</button>
+            </div>
+            <div id="stats-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:2rem;"></div>
+            <div id="stats-charts"></div>
+        </div>
+
         <!-- ── ADMİN PANELİ ── -->
         <div id="view-admin" class="hidden animate-up">
             <div style="margin-bottom:2rem;">
@@ -182,6 +206,13 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        }
+    </script>
 </body>
 </html>

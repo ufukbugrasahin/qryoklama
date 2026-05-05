@@ -98,7 +98,8 @@ class AttendanceApp {
     }
 
     switchView(viewId) {
-        ['view-login','view-teacher','view-session','view-student','view-history','view-admin','view-student-history'].forEach(v => {
+        ['view-login','view-teacher','view-session','view-student','view-history',
+         'view-admin','view-student-history','view-stats'].forEach(v => {
             document.getElementById(v)?.classList.add('hidden');
         });
         document.getElementById(viewId)?.classList.remove('hidden');
@@ -110,27 +111,33 @@ class AttendanceApp {
     handleRoleChange() {
         const role = document.getElementById('login-role').value;
         const map = { student: 'ufuk@uni.edu.tr', teacher: 'peri@uni.edu.tr', admin: 'admin@uni.edu.tr' };
-        document.getElementById('login-email').value    = map[role] || '';
-        document.getElementById('login-password').value = role === 'admin' ? 'admin123' : '123';
+        document.getElementById('login-email').value = map[role] || '';
+        document.getElementById('login-password').value = '';
     }
 
     // ── GİRİŞ ───────────────────────────────────────────────────────────────
 
     async login() {
-        const email = document.getElementById('login-email').value;
+        const email = document.getElementById('login-email').value.trim();
         const pass  = document.getElementById('login-password').value;
-        await this.syncFromCloud();
-        const user = this.db.users.find(u => u.email === email && u.password === pass);
-        if (user) {
-            this.currentUser = user;
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password: pass })
+            });
+            const data = await res.json();
+            if (data.error) { alert("Giriş Hatalı! " + data.error); return; }
+            this.currentUser = data;
+            await this.syncFromCloud();
             this.showDashboard();
             const pending = sessionStorage.getItem('pending_session');
-            if (pending && user.role === 'student') {
+            if (pending && data.role === 'student') {
                 await this.processAttendance(pending);
                 sessionStorage.removeItem('pending_session');
             }
-        } else {
-            alert("Giriş Hatalı! Lütfen bilgilerinizi kontrol edin.");
+        } catch(e) {
+            alert("Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.");
         }
     }
 
@@ -173,7 +180,9 @@ class AttendanceApp {
     async startSession(course) {
         document.getElementById('active-session-title').innerText = course.name;
         const pin    = Math.floor(100000 + Math.random() * 900000).toString();
-        const qrData = "ATTEND_" + Date.now();
+        // QR verisi içine süre sınırı (5 dk) göm
+        const expiry = Date.now() + 5 * 60 * 1000;
+        const qrData = `ATTEND_${Date.now()}_EXP_${expiry}`;
         this.db.active_session = { course_id: course.id, qr_data: qrData, pin, active: true };
         this.db.records = [];
         await this.syncToCloud();
@@ -261,6 +270,7 @@ class AttendanceApp {
                         <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">${s.attendee_count} ÖĞRENCİ</div>
                         <button class="btn btn-primary" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;" onclick="app.toggleHistoryDetail(${idx})">Listele</button>
                         <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--glass-border);" onclick="app.printHistorySession(${idx})">🖨️ Yazdır</button>
+                        <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(16,185,129,0.1);border:1px solid var(--success);color:var(--success);" onclick="app.exportHistoryExcel(${idx})">📥 Excel</button>
                     </div>
                 </div>
                 <div id="history-detail-${idx}" class="hidden" style="margin-top:1rem;border-top:1px solid var(--glass-border);padding-top:1rem;"></div>`;
@@ -387,6 +397,11 @@ class AttendanceApp {
     }
 
     async processAttendance(qrData) {
+        // QR süre kontrolü
+        const expMatch = qrData.match(/_EXP_(\d+)/);
+        if (expMatch && Date.now() > parseInt(expMatch[1])) {
+            alert("QR kodunun süresi dolmuş! Öğretmenden yeni kod isteyin."); return;
+        }
         await this.syncFromCloud();
         if (this.db.active_session && this.db.active_session.qr_data === qrData) {
             if (!this.db.records.includes(this.currentUser.id)) {
@@ -398,6 +413,110 @@ class AttendanceApp {
                 document.getElementById('success-overlay').classList.remove('hidden');
             } else { alert("Zaten katıldınız!"); }
         } else { alert("Geçersiz Oturum!"); }
+    }
+
+    // ── İSTATİSTİK ───────────────────────────────────────────────────────────
+
+    async showStats() {
+        this.switchView('view-stats');
+        document.getElementById('stats-summary').innerHTML = '<div style="color:var(--text-secondary);">Yükleniyor...</div>';
+        document.getElementById('stats-charts').innerHTML  = '';
+        try {
+            const res = await fetch(`${CONFIG.API_BASE}/teacher/${this.currentUser.id}/stats`);
+            if (!res.ok) throw new Error();
+            const data = await res.json();
+            this.renderStats(data);
+            this.statsData = data;
+        } catch(e) {
+            document.getElementById('stats-summary').innerHTML = '<div style="color:var(--text-secondary);">Veri alınamadı.</div>';
+        }
+    }
+
+    renderStats(data) {
+        const totalSessions = data.courses.reduce((s, c) => s + c.total_sessions, 0);
+        const summaryEl = document.getElementById('stats-summary');
+        summaryEl.innerHTML = [
+            ['📚', 'Toplam Ders',    data.courses.length],
+            ['📋', 'Toplam Oturum', totalSessions],
+            ['👥', 'Öğrenci Sayısı', data.total_students],
+        ].map(([icon, label, val]) => `
+            <div class="glass-card" style="padding:1.25rem;text-align:center;">
+                <div style="font-size:1.75rem;">${icon}</div>
+                <div style="font-size:1.5rem;font-weight:800;margin:0.25rem 0;">${val}</div>
+                <div style="font-size:0.75rem;color:var(--text-secondary);">${label}</div>
+            </div>`).join('');
+
+        const chartsEl = document.getElementById('stats-charts');
+        chartsEl.innerHTML = '';
+        data.courses.forEach(c => {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'glass-card';
+            wrapper.style.cssText = 'padding:1.5rem;margin-bottom:1.25rem;';
+            const canvasId = `chart-${c.course_code.replace(/\W/g,'_')}`;
+            wrapper.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+                    <div>
+                        <span style="color:var(--accent);font-weight:800;font-size:0.7rem;">${c.course_code}</span>
+                        <div style="font-weight:700;">${c.course_name}</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:1.25rem;font-weight:800;color:var(--success);">${c.avg_attendance}</div>
+                        <div style="font-size:0.7rem;color:var(--text-secondary);">ort. katılım</div>
+                    </div>
+                </div>
+                ${c.counts.length > 0
+                    ? `<canvas id="${canvasId}" height="80"></canvas>`
+                    : '<div style="color:var(--text-secondary);font-size:0.85rem;">Henüz tamamlanmış oturum yok.</div>'
+                }`;
+            chartsEl.appendChild(wrapper);
+
+            if (c.counts.length > 0) {
+                const ctx = document.getElementById(canvasId);
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: c.counts.map((_, i) => `${i+1}. Ders`),
+                        datasets: [{
+                            label: 'Katılım',
+                            data: c.counts,
+                            backgroundColor: 'rgba(59,130,246,0.6)',
+                            borderColor: '#3b82f6',
+                            borderWidth: 1,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                            y: { ticks: { color: '#94a3b8', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    exportStatsExcel() {
+        if (!this.statsData || !this.statsData.courses.length) { alert("İstatistik verisi yok."); return; }
+        const rows = [['Ders Kodu', 'Ders Adı', 'Toplam Oturum', 'Ort. Katılım']];
+        this.statsData.courses.forEach(c => rows.push([c.course_code, c.course_name, c.total_sessions, c.avg_attendance]));
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'İstatistikler');
+        XLSX.writeFile(wb, `yoklama_istatistik_${new Date().toLocaleDateString('tr-TR').replace(/\./g,'-')}.xlsx`);
+    }
+
+    exportHistoryExcel(idx) {
+        const s = this.historyData[idx];
+        if (!s) return;
+        const rows = [['#', 'Ad Soyad', 'Öğrenci No', 'Durum']];
+        s.attendees.forEach((a, i) => rows.push([i+1, a.name, a.student_no, 'Katıldı']));
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Yoklama');
+        XLSX.writeFile(wb, `${s.course_code}_${s.date.replace(/[: ]/g,'-')}.xlsx`);
     }
 
     // ── ADMİN PANELİ ─────────────────────────────────────────────────────────
