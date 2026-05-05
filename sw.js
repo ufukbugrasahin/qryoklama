@@ -1,4 +1,4 @@
-const CACHE = 'qryoklama-v1';
+const CACHE = 'qryoklama-v3';
 const STATIC = ['/', '/index.html', '/app.js', '/style.css', '/manifest.json'];
 
 self.addEventListener('install', e => {
