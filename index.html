@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="tr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Yoklama Sistemi</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <nav class="hidden" id="nav-main">
+        <div class="brand">ATTENDANCE SYSTEM</div>
+        <div style="display:flex;align-items:center;gap:1.5rem;">
+            <div style="text-align:right;">
+                <div id="user-display-name" style="font-weight:700;font-size:0.9rem;"></div>
+                <div id="user-display-role" style="font-size:0.7rem;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px;"></div>
+            </div>
+            <button class="btn btn-primary" style="width:auto;padding:0.5rem 1rem;font-size:0.8rem;" onclick="app.logout()">Çıkış Yap</button>
+        </div>
+    </nav>
+
+    <div class="container">
+
+        <!-- GİRİŞ -->
+        <div id="view-login" class="auth-container glass-card animate-up">
+            <h1>Hoş Geldiniz.</h1>
+            <p class="subtitle">Akıllı QR Yoklama ve Takip Sistemi</p>
+
+            <div class="input-group">
+                <label>Giriş Rolü</label>
+                <select id="login-role" onchange="app.handleRoleChange()">
+                    <option value="student">Öğrenci</option>
+                    <option value="teacher">Öğretim Görevlisi</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label>E-Posta Adresi</label>
+                <input type="email" id="login-email" placeholder="isim@uni.edu.tr">
+            </div>
+
+            <div class="input-group">
+                <label>Şifre</label>
+                <input type="password" id="login-password" placeholder="••••••••">
+            </div>
+
+            <button class="btn btn-primary" onclick="app.login()">Sisteme Eriş</button>
+        </div>
+
+        <!-- ÖĞRETMEN PANEL -->
+        <div id="view-teacher" class="hidden animate-up">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:1rem;margin-bottom:3rem;">
+                <div>
+                    <h1 style="font-size:2rem;">Ders Paneli</h1>
+                    <p class="text-muted">Oturum başlatmak için bir ders seçin.</p>
+                </div>
+                <button class="btn" style="width:auto;padding:0.6rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                    onclick="app.showHistory()">
+                    📋 Geçmiş Yoklamalar
+                </button>
+            </div>
+            <div class="course-grid" id="teacher-courses"></div>
+        </div>
+
+        <!-- AKTİF OTURUM -->
+        <div id="view-session" class="hidden text-center animate-up">
+            <div class="qr-view glass-card">
+                <h2 id="active-session-title" style="margin-bottom:0.5rem;">Ders</h2>
+                <p style="color:var(--text-secondary);font-size:0.9rem;">Yoklama oturumu aktif. Öğrenciler okutup katılabilir.</p>
+
+                <div class="qr-box">
+                    <div id="qr-output"></div>
+                </div>
+
+                <div style="margin:1rem 0;">
+                    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Manuel Giriş Kodu</p>
+                    <div class="pin-display" id="session-pin">------</div>
+                </div>
+
+                <div style="display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap;">
+                    <button class="btn btn-primary" style="background:var(--danger);max-width:220px;" onclick="app.closeSession()">
+                        Oturumu Sonlandır
+                    </button>
+                    <button class="btn" style="max-width:180px;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                        onclick="app.printCurrentSession()">
+                        🖨️ Listeyi Yazdır
+                    </button>
+                </div>
+            </div>
+
+            <div class="attendance-list glass-card" style="padding:2rem;margin-top:2rem;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;">
+                    <h3>Katılım Listesi</h3>
+                    <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">
+                        <span id="attendee-count">0</span> ÖĞRENCİ
+                    </div>
+                </div>
+                <div id="attendee-list-container"></div>
+            </div>
+        </div>
+
+        <!-- ÖĞRENCİ PANEL -->
+        <div id="view-student" class="hidden text-center animate-up">
+            <div class="glass-card" style="max-width:500px;margin:4rem auto;padding:3rem;">
+                <h1 style="font-size:1.75rem;">Yoklamaya Katıl</h1>
+                <p class="subtitle">Kamera ile tarama yapın veya anahtar kodu girin.</p>
+
+                <div style="background:rgba(255,255,255,0.03);border:1px solid var(--glass-border);padding:1.5rem;border-radius:1rem;margin-bottom:2rem;">
+                    <label style="display:block;margin-bottom:0.5rem;font-size:0.75rem;color:var(--text-secondary);">6 HANELİ ANAHTAR</label>
+                    <div style="display:flex;gap:0.5rem;">
+                        <input type="text" id="manual-code" maxlength="6"
+                            style="text-align:center;font-size:1.5rem;font-weight:800;letter-spacing:4px;" placeholder="000000">
+                        <button class="btn btn-primary" style="width:auto;padding:0 1.5rem;" onclick="app.submitManual()">Onayla</button>
+                    </div>
+                </div>
+
+                <div id="scanner-container" class="hidden"
+                    style="margin-bottom:1.5rem;border-radius:1rem;overflow:hidden;border:2px solid var(--accent);"></div>
+
+                <button class="btn btn-primary" id="btn-scan" onclick="app.startScan()">Kamerayı Başlat</button>
+
+                <div id="success-overlay" class="hidden"
+                    style="margin-top:2rem;background:rgba(16,185,129,0.1);border:1px solid var(--success);padding:1.5rem;border-radius:1rem;">
+                    <div style="color:var(--success);font-size:2rem;margin-bottom:0.5rem;">✓</div>
+                    <div style="font-weight:800;color:var(--success);">Yoklamanız Başarıyla Alındı!</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">Ders: <span id="success-course-name">--</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GEÇMİŞ YOKLAMALAR -->
+        <div id="view-history" class="hidden animate-up">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;flex-wrap:wrap;">
+                <button class="btn" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);"
+                    onclick="app.switchView('view-teacher');app.renderTeacherCourses();">
+                    ← Geri
+                </button>
+                <div>
+                    <h1 style="font-size:2rem;">Geçmiş Yoklamalar</h1>
+                    <p class="text-muted">Tüm yoklama oturumlarınız — tarih, ders ve katılım listesi</p>
+                </div>
+            </div>
+            <div id="history-list"></div>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="app.js"></script>
+</body>
+
+</html>
