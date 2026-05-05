@@ -1,12 +1,6 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "main.py", "use": "@vercel/python" }
-  ],
-  "routes": [
-    { "src": "/sync",             "dest": "/main.py" },
-    { "src": "/teacher/(.*)",     "dest": "/main.py" },
-    { "src": "/(.*\\.(js|css))",  "dest": "/$1" },
-    { "src": "/(.*)",             "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/sync",         "destination": "/api/index" },
+    { "source": "/teacher/:path*", "destination": "/api/index" }
   ]
 }
