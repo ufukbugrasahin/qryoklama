@@ -76,6 +76,13 @@ class AttendanceRecord(Base):
     session    = relationship("AttendanceSession", back_populates="records")
     student    = relationship("User")
 
+class CourseEnrollment(Base):
+    __tablename__ = "course_enrollments"
+    id          = Column(Integer, primary_key=True, index=True)
+    course_id   = Column(Integer, ForeignKey("courses.id"))
+    student_id  = Column(Integer, ForeignKey("users.id"))
+    enrolled_at = Column(DateTime, default=get_now)
+
 Base.metadata.create_all(bind=engine)
 
 # ── UYGULAMA ─────────────────────────────────────────────────────────────────
@@ -275,15 +282,24 @@ def teacher_history(teacher_id: int, db: Session = Depends(get_db)):
             AttendanceRecord.session_id == s.id
         ).all()
 
-        attendees = []
+        attended_ids = {r.student_id for r in att_recs}
+
+        # Kayıtlı öğrenciler
+        enrolled_ids = {
+            e.student_id for e in db.query(CourseEnrollment)
+            .filter(CourseEnrollment.course_id == s.course_id).all()
+        }
+        absent_ids = enrolled_ids - attended_ids
+
+        attendees, absent = [], []
         for r in att_recs:
             student = db.query(User).filter(User.id == r.student_id).first()
             if student:
-                attendees.append({
-                    "id": student.id,
-                    "name": student.name,
-                    "student_no": student.student_no or "",
-                })
+                attendees.append({"id": student.id, "name": student.name, "student_no": student.student_no or ""})
+        for sid in absent_ids:
+            student = db.query(User).filter(User.id == sid).first()
+            if student:
+                absent.append({"id": student.id, "name": student.name, "student_no": student.student_no or ""})
 
         result.append({
             "session_id":     s.id,
@@ -292,7 +308,9 @@ def teacher_history(teacher_id: int, db: Session = Depends(get_db)):
             "date":           s.date.strftime("%d.%m.%Y %H:%M") if s.date else "",
             "is_active":      s.is_active,
             "attendee_count": len(attendees),
+            "enrolled_count": len(enrolled_ids),
             "attendees":      attendees,
+            "absent":         absent,
         })
 
     return result
@@ -325,6 +343,67 @@ def student_history(student_id: int, db: Session = Depends(get_db)):
     result.sort(key=lambda x: x["date"], reverse=True)
     return result
 
+
+# ── DERS KAYIT (ENROLLMENT) ──────────────────────────────────────────────────
+
+@app.get("/student/{student_id}/courses")
+def student_courses(student_id: int, db: Session = Depends(get_db)):
+    enrollments = db.query(CourseEnrollment).filter(
+        CourseEnrollment.student_id == student_id
+    ).all()
+    result = []
+    for e in enrollments:
+        course = db.query(Course).filter(Course.id == e.course_id).first()
+        if not course:
+            continue
+        total = db.query(AttendanceSession).filter(
+            AttendanceSession.course_id == course.id,
+            AttendanceSession.is_active == False
+        ).count()
+        attended = (
+            db.query(AttendanceRecord)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .filter(AttendanceSession.course_id == course.id,
+                    AttendanceRecord.student_id == student_id)
+            .count()
+        )
+        rate = round(attended / total * 100) if total > 0 else None
+        result.append({
+            "course_id":       course.id,
+            "course_code":     course.course_code,
+            "course_name":     course.course_name,
+            "total_sessions":  total,
+            "attended":        attended,
+            "attendance_rate": rate,
+        })
+    return result
+
+@app.post("/student/{student_id}/enroll")
+def enroll_course(student_id: int, data: dict, db: Session = Depends(get_db)):
+    code   = data.get("course_code", "").strip().upper()
+    course = db.query(Course).filter(Course.course_code == code).first()
+    if not course:
+        return {"error": f"'{code}' kodlu ders bulunamadı"}
+    exists = db.query(CourseEnrollment).filter(
+        CourseEnrollment.student_id == student_id,
+        CourseEnrollment.course_id  == course.id,
+    ).first()
+    if exists:
+        return {"error": "Bu derse zaten kayıtlısınız"}
+    db.add(CourseEnrollment(student_id=student_id, course_id=course.id))
+    db.commit()
+    return {"status": "success", "course_name": course.course_name}
+
+@app.delete("/student/{student_id}/enroll/{course_id}")
+def unenroll_course(student_id: int, course_id: int, db: Session = Depends(get_db)):
+    e = db.query(CourseEnrollment).filter(
+        CourseEnrollment.student_id == student_id,
+        CourseEnrollment.course_id  == course_id,
+    ).first()
+    if e:
+        db.delete(e)
+        db.commit()
+    return {"status": "success"}
 
 # ── ADMİN ────────────────────────────────────────────────────────────────────
 
@@ -380,11 +459,16 @@ def admin_delete_user(user_id: int, db: Session = Depends(get_db)):
 @app.get("/admin/courses")
 def admin_get_courses(db: Session = Depends(get_db)):
     teachers = {u.id: u.name for u in db.query(User).filter(User.role == "teacher").all()}
-    return [
-        {"id": c.id, "code": c.course_code, "name": c.course_name,
-         "teacher_id": c.teacher_id, "teacher_name": teachers.get(c.teacher_id, "")}
-        for c in db.query(Course).order_by(Course.course_code).all()
-    ]
+    courses  = db.query(Course).order_by(Course.course_code).all()
+    result = []
+    for c in courses:
+        enrolled = db.query(CourseEnrollment).filter(CourseEnrollment.course_id == c.id).count()
+        result.append({
+            "id": c.id, "code": c.course_code, "name": c.course_name,
+            "teacher_id": c.teacher_id, "teacher_name": teachers.get(c.teacher_id, ""),
+            "enrollment_count": enrolled,
+        })
+    return result
 
 @app.post("/admin/courses")
 def admin_create_course(data: dict, db: Session = Depends(get_db)):

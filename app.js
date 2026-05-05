@@ -99,7 +99,7 @@ class AttendanceApp {
 
     switchView(viewId) {
         ['view-login','view-teacher','view-session','view-student','view-history',
-         'view-admin','view-student-history','view-stats'].forEach(v => {
+         'view-admin','view-student-history','view-stats','view-student-courses'].forEach(v => {
             document.getElementById(v)?.classList.add('hidden');
         });
         document.getElementById(viewId)?.classList.remove('hidden');
@@ -271,7 +271,7 @@ class AttendanceApp {
                         <div style="font-size:0.8rem;color:var(--text-secondary);margin-top:0.25rem;">📅 ${s.date}</div>
                     </div>
                     <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
-                        <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">${s.attendee_count} ÖĞRENCİ</div>
+                        <div style="background:rgba(59,130,246,0.1);color:var(--accent);padding:0.25rem 1rem;border-radius:1rem;font-weight:800;font-size:0.8rem;">${s.attendee_count}${s.enrolled_count ? ' / ' + s.enrolled_count : ''} ÖĞRENCİ</div>
                         <button class="btn btn-primary" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;" onclick="app.toggleHistoryDetail(${idx})">Listele</button>
                         <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(255,255,255,0.08);border:1px solid var(--glass-border);" onclick="app.printHistorySession(${idx})">🖨️ Yazdır</button>
                         <button class="btn" style="width:auto;padding:0.4rem 1rem;font-size:0.8rem;background:rgba(16,185,129,0.1);border:1px solid var(--success);color:var(--success);" onclick="app.exportHistoryExcel(${idx})">📥 Excel</button>
@@ -292,15 +292,34 @@ class AttendanceApp {
 
     renderHistoryDetail(idx, container) {
         const s = this.historyData[idx];
-        if (!s.attendees.length) { container.innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;">Katılım kaydı yok.</div>'; return; }
-        container.innerHTML = s.attendees.map((a, i) => `
-            <div class="list-item" style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
-                <div style="display:flex;align-items:center;gap:1rem;">
-                    <div style="color:var(--text-secondary);font-size:0.75rem;min-width:1.5rem;">${i+1}.</div>
-                    <div><div style="font-weight:700;">${a.name}</div><div style="font-size:0.7rem;color:var(--text-secondary);">${a.student_no}</div></div>
-                </div>
-                <div class="status-present">KATILDI</div>
-            </div>`).join('');
+        const hasAttendees = s.attendees && s.attendees.length > 0;
+        const hasAbsent    = s.absent    && s.absent.length    > 0;
+        if (!hasAttendees && !hasAbsent) {
+            container.innerHTML = '<div style="color:var(--text-secondary);font-size:0.9rem;padding:0.5rem 0;">Kayıtlı öğrenci veya katılım kaydı yok.</div>';
+            return;
+        }
+        let html = '';
+        if (hasAttendees) {
+            html += s.attendees.map((a, i) => `
+                <div class="list-item" style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex;align-items:center;gap:1rem;">
+                        <div style="color:var(--text-secondary);font-size:0.75rem;min-width:1.5rem;">${i+1}.</div>
+                        <div><div style="font-weight:700;">${a.name}</div><div style="font-size:0.7rem;color:var(--text-secondary);">${a.student_no}</div></div>
+                    </div>
+                    <div class="status-present">KATILDI</div>
+                </div>`).join('');
+        }
+        if (hasAbsent) {
+            html += s.absent.map(a => `
+                <div class="list-item" style="padding:0.75rem 0;border-bottom:1px solid rgba(255,255,255,0.05);">
+                    <div style="display:flex;align-items:center;gap:1rem;">
+                        <div style="color:var(--text-secondary);font-size:0.75rem;min-width:1.5rem;">—</div>
+                        <div><div style="font-weight:700;color:var(--text-secondary);">${a.name}</div><div style="font-size:0.7rem;color:var(--text-secondary);">${a.student_no}</div></div>
+                    </div>
+                    <div style="background:rgba(244,63,94,0.1);color:var(--danger);padding:0.25rem 0.75rem;border-radius:2rem;font-size:0.7rem;font-weight:700;border:1px solid rgba(244,63,94,0.25);white-space:nowrap;">GELMEDİ</div>
+                </div>`).join('');
+        }
+        container.innerHTML = html;
     }
 
     printHistorySession(idx) {
@@ -348,6 +367,92 @@ class AttendanceApp {
                         <span class="status-present" style="font-size:0.7rem;">KATILDI</span>
                     </div>`).join('')}
             </div>`).join('');
+    }
+
+    // ── ÖĞRENCİ DERSLERİ & DEVAM ─────────────────────────────────────────────
+
+    async showStudentCourses() {
+        this.switchView('view-student-courses');
+        document.getElementById('student-courses-list').innerHTML =
+            '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Yükleniyor...</div>';
+        try {
+            const res  = await fetch(`${CONFIG.API_BASE}/student/${this.currentUser.id}/courses`);
+            const data = res.ok ? await res.json() : [];
+            this.renderStudentCourses(data);
+        } catch(e) {
+            document.getElementById('student-courses-list').innerHTML =
+                '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Veri alınamadı.</div>';
+        }
+    }
+
+    renderStudentCourses(data) {
+        const container = document.getElementById('student-courses-list');
+        if (!data.length) {
+            container.innerHTML = `
+                <div class="glass-card" style="padding:3rem;text-align:center;">
+                    <div style="font-size:2.5rem;margin-bottom:0.75rem;">📚</div>
+                    <div style="font-weight:700;margin-bottom:0.5rem;">Henüz bir derse kayıtlı değilsiniz</div>
+                    <div style="color:var(--text-secondary);font-size:0.875rem;">Yukarıdaki alana ders kodunu girerek kayıt olabilirsiniz.</div>
+                </div>`;
+            return;
+        }
+        container.innerHTML = data.map(c => {
+            const r     = c.attendance_rate;
+            const color = r === null ? '#64748b' : r >= 85 ? '#10b981' : r >= 70 ? '#f59e0b' : '#f43f5e';
+            const label = r === null ? 'Henüz ders yapılmadı' : r >= 85 ? '✓ Devam yeterli' : r >= 70 ? '⚠ Dikkat et!' : '✕ Devamsızlık riski!';
+            const bar   = r === null ? 0 : Math.min(r, 100);
+            const rText = r === null ? '—' : `%${r}`;
+            return `
+                <div class="glass-card" style="padding:1.5rem;margin-bottom:1rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+                        <div>
+                            <div style="color:var(--accent);font-weight:800;font-size:0.7rem;margin-bottom:0.25rem;">${c.course_code}</div>
+                            <div style="font-weight:700;font-size:1rem;">${c.course_name}</div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:0.75rem;">
+                            <div style="font-size:1.75rem;font-weight:900;color:${color};font-variant-numeric:tabular-nums;">${rText}</div>
+                            <button class="btn-icon btn-danger" title="Dersten çık" onclick="app.unenrollFromCourse(${c.course_id},'${c.course_name.replace(/'/g,"\\'")}')">🚪</button>
+                        </div>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.06);border-radius:100px;height:7px;overflow:hidden;margin-bottom:0.6rem;">
+                        <div style="height:100%;width:${bar}%;background:${color};border-radius:100px;transition:width 0.6s ease;"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.8rem;">
+                        <div style="font-weight:700;color:${color};">${label}</div>
+                        <div style="color:var(--text-secondary);">${c.attended} / ${c.total_sessions} oturum</div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    async enrollInCourse() {
+        const code = (document.getElementById('enroll-code').value || '').trim().toUpperCase();
+        if (!code) { this.toast('Ders kodunu girin.', 'error'); return; }
+        try {
+            const res  = await fetch(`${CONFIG.API_BASE}/student/${this.currentUser.id}/enroll`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ course_code: code })
+            });
+            const data = await res.json();
+            if (data.error) { this.toast(data.error, 'error'); return; }
+            document.getElementById('enroll-code').value = '';
+            this.toast(`${data.course_name} dersine kayıt oldunuz!`, 'success');
+            this.showStudentCourses();
+        } catch(e) {
+            this.toast('Sunucuya bağlanılamadı.', 'error');
+        }
+    }
+
+    async unenrollFromCourse(courseId, courseName) {
+        if (!confirm(`"${courseName}" dersinden çıkmak istiyor musunuz?`)) return;
+        try {
+            await fetch(`${CONFIG.API_BASE}/student/${this.currentUser.id}/enroll/${courseId}`, { method: 'DELETE' });
+            this.toast(`${courseName} dersinden çıkıldı.`, 'info');
+            this.showStudentCourses();
+        } catch(e) {
+            this.toast('Hata oluştu.', 'error');
+        }
     }
 
     // ── YAZDIR ───────────────────────────────────────────────────────────────
@@ -591,6 +696,7 @@ class AttendanceApp {
                         <div style="font-weight:700;">${c.name}</div>
                         <div style="font-size:0.75rem;color:var(--text-secondary);">${c.code} &nbsp;·&nbsp; ${c.teacher_name || 'Öğretmen atanmamış'}</div>
                     </div>
+                    <span style="background:rgba(129,140,248,0.12);color:#a5b4fc;font-size:0.7rem;font-weight:700;padding:0.2rem 0.6rem;border-radius:0.375rem;white-space:nowrap;">${c.enrollment_count || 0} kayıtlı</span>
                     <div style="display:flex;gap:0.5rem;">
                         <button class="btn-icon" onclick="app.openCourseModal(${c.id})">✏️</button>
                         <button class="btn-icon btn-danger" onclick="app.deleteCourse(${c.id},'${c.name}')">🗑️</button>
@@ -822,6 +928,9 @@ class AttendanceApp {
         });
         document.getElementById('reg-password2')?.addEventListener('keypress', e => {
             if (e.key === 'Enter') this.register();
+        });
+        document.getElementById('enroll-code')?.addEventListener('keypress', e => {
+            if (e.key === 'Enter') this.enrollInCourse();
         });
         document.getElementById('modal-overlay')?.addEventListener('click', e => {
             if (e.target === document.getElementById('modal-overlay')) this.closeModal();

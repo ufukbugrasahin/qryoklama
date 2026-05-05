@@ -149,13 +149,34 @@
                 </div>
                 <div id="scanner-container" class="hidden" style="margin-bottom:1.5rem;border-radius:1rem;overflow:hidden;border:2px solid var(--accent);"></div>
                 <button class="btn btn-primary" id="btn-scan" onclick="app.startScan()">Kamerayı Başlat</button>
-                <button class="btn" style="margin-top:0.75rem;background:rgba(255,255,255,0.06);border:1px solid var(--glass-border);" onclick="app.showStudentHistory()">📋 Yoklama Geçmişim</button>
+                <button class="btn btn-ghost" style="margin-top:0.6rem;" onclick="app.showStudentHistory()">📋 Yoklama Geçmişim</button>
+                <button class="btn btn-ghost" style="margin-top:0.5rem;" onclick="app.showStudentCourses()">📚 Derslerim &amp; Devam Durumu</button>
                 <div id="success-overlay" class="hidden success-overlay">
                     <div class="s-icon">✅</div>
                     <div class="s-title">Yoklamanız Alındı!</div>
                     <div class="s-sub">Ders: <span id="success-course-name">--</span></div>
                 </div>
             </div>
+        </div>
+
+        <!-- ── ÖĞRENCİ DERSLERİ ── -->
+        <div id="view-student-courses" class="hidden animate-up">
+            <div style="display:flex;align-items:center;gap:1rem;margin-bottom:2.5rem;flex-wrap:wrap;">
+                <button class="btn btn-ghost" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;"
+                    onclick="app.switchView('view-student')">← Geri</button>
+                <div>
+                    <h1 style="font-size:2rem;">Derslerim</h1>
+                    <p class="text-muted">Kayıtlı dersler ve devam durumunuz</p>
+                </div>
+            </div>
+            <div class="glass-card" style="padding:1.5rem;margin-bottom:1.5rem;">
+                <div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:0.75rem;">Derse Kayıt Ol</div>
+                <div style="display:flex;gap:0.5rem;">
+                    <input type="text" id="enroll-code" maxlength="10" placeholder="Ders kodu (örn: BLG301)" style="flex:1;text-transform:uppercase;">
+                    <button class="btn btn-primary" style="width:auto;padding:0 1.5rem;" onclick="app.enrollInCourse()">Kayıt Ol</button>
+                </div>
+            </div>
+            <div id="student-courses-list"></div>
         </div>
 
         <!-- ── ÖĞRENCİ GEÇMİŞ ── -->
