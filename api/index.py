@@ -407,6 +407,73 @@ def unenroll_course(student_id: int, course_id: int, db: Session = Depends(get_d
 
 # ── ADMİN ────────────────────────────────────────────────────────────────────
 
+@app.get("/admin/stats")
+def admin_stats(db: Session = Depends(get_db)):
+    return {
+        "students":    db.query(User).filter(User.role == "student").count(),
+        "teachers":    db.query(User).filter(User.role == "teacher").count(),
+        "courses":     db.query(Course).count(),
+        "sessions":    db.query(AttendanceSession).count(),
+        "enrollments": db.query(CourseEnrollment).count(),
+    }
+
+@app.get("/admin/courses/{course_id}/students")
+def admin_course_students(course_id: int, db: Session = Depends(get_db)):
+    enrollments = db.query(CourseEnrollment).filter(CourseEnrollment.course_id == course_id).all()
+    total_sessions = db.query(AttendanceSession).filter(
+        AttendanceSession.course_id == course_id,
+        AttendanceSession.is_active == False
+    ).count()
+    result = []
+    for e in enrollments:
+        student = db.query(User).filter(User.id == e.student_id).first()
+        if not student:
+            continue
+        attended = (
+            db.query(AttendanceRecord)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .filter(AttendanceSession.course_id == course_id,
+                    AttendanceRecord.student_id == e.student_id)
+            .count()
+        )
+        rate = round(attended / total_sessions * 100) if total_sessions > 0 else None
+        result.append({
+            "student_id":      student.id,
+            "name":            student.name,
+            "student_no":      student.student_no or "",
+            "email":           student.email,
+            "attended":        attended,
+            "total_sessions":  total_sessions,
+            "attendance_rate": rate,
+        })
+    result.sort(key=lambda x: x["name"])
+    return result
+
+@app.post("/admin/courses/{course_id}/enroll")
+def admin_enroll_student(course_id: int, data: dict, db: Session = Depends(get_db)):
+    student_id = int(data.get("student_id", 0))
+    if not db.query(User).filter(User.id == student_id, User.role == "student").first():
+        return {"error": "Öğrenci bulunamadı"}
+    if db.query(CourseEnrollment).filter(
+        CourseEnrollment.course_id  == course_id,
+        CourseEnrollment.student_id == student_id,
+    ).first():
+        return {"error": "Öğrenci zaten bu derse kayıtlı"}
+    db.add(CourseEnrollment(course_id=course_id, student_id=student_id))
+    db.commit()
+    return {"status": "success"}
+
+@app.delete("/admin/courses/{course_id}/enroll/{student_id}")
+def admin_unenroll_student(course_id: int, student_id: int, db: Session = Depends(get_db)):
+    e = db.query(CourseEnrollment).filter(
+        CourseEnrollment.course_id  == course_id,
+        CourseEnrollment.student_id == student_id,
+    ).first()
+    if e:
+        db.delete(e)
+        db.commit()
+    return {"status": "success"}
+
 @app.get("/admin/users")
 def admin_get_users(db: Session = Depends(get_db)):
     return [

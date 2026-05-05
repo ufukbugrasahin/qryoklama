@@ -223,15 +223,19 @@
 
         <!-- ── ADMİN PANELİ ── -->
         <div id="view-admin" class="hidden animate-up">
-            <div style="margin-bottom:2rem;">
+            <div style="margin-bottom:1.75rem;">
                 <h1 style="font-size:2rem;">Yönetim Paneli</h1>
-                <p class="text-muted">Kullanıcı ve ders yönetimi</p>
+                <p class="text-muted">Kullanıcı, ders ve kayıt yönetimi</p>
             </div>
+
+            <!-- Stats Row -->
+            <div id="admin-stats-row" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1rem;margin-bottom:2rem;"></div>
 
             <!-- Tabs -->
             <div class="admin-tabs">
-                <button id="tab-btn-users" class="admin-tab-btn tab-active" onclick="app.switchAdminTab('users')">👥 Kullanıcılar</button>
-                <button id="tab-btn-courses" class="admin-tab-btn" onclick="app.switchAdminTab('courses')">📚 Dersler</button>
+                <button id="tab-btn-users"      class="admin-tab-btn tab-active" onclick="app.switchAdminTab('users')">👥 Kullanıcılar</button>
+                <button id="tab-btn-courses"    class="admin-tab-btn"            onclick="app.switchAdminTab('courses')">📚 Dersler</button>
+                <button id="tab-btn-enrollment" class="admin-tab-btn"            onclick="app.switchAdminTab('enrollment')">📋 Kayıt Yönetimi</button>
             </div>
 
             <!-- Users Panel -->
@@ -250,6 +254,22 @@
                     <button class="btn btn-primary" style="width:auto;padding:0.5rem 1.25rem;font-size:0.85rem;" onclick="app.openCourseModal()">+ Ders Ekle</button>
                 </div>
                 <div id="admin-courses-list"></div>
+            </div>
+
+            <!-- Enrollment Panel -->
+            <div id="admin-enrollment-panel" class="hidden">
+                <div class="glass-card" style="padding:1.5rem;margin-bottom:1.25rem;">
+                    <div class="input-group" style="margin-bottom:1rem;">
+                        <label>Ders Seç</label>
+                        <select id="enrollment-course-select" onchange="app.loadEnrollmentForCourse()"></select>
+                    </div>
+                    <div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:0.6rem;">Öğrenci Ekle</div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <select id="enrollment-student-select" style="flex:1;"></select>
+                        <button class="btn btn-primary" style="width:auto;padding:0 1.25rem;" onclick="app.adminEnrollStudent()">Ekle</button>
+                    </div>
+                </div>
+                <div id="admin-enrollment-list"></div>
             </div>
         </div>
 

@@ -633,16 +633,42 @@ class AttendanceApp {
 
     async loadAdminData() {
         this.switchAdminTab('users');
-        await this.refreshAdminUsers();
+        await Promise.all([this.refreshAdminUsers(), this.fetchAdminStats()]);
+    }
+
+    async fetchAdminStats() {
+        try {
+            const res  = await fetch(`${CONFIG.API_BASE}/admin/stats`);
+            const data = res.ok ? await res.json() : null;
+            if (data) this.renderAdminStats(data);
+        } catch(e) {}
+    }
+
+    renderAdminStats(data) {
+        const el = document.getElementById('admin-stats-row');
+        if (!el) return;
+        el.innerHTML = [
+            ['👥', data.students,    'Öğrenci'],
+            ['👨‍🏫', data.teachers,    'Öğretmen'],
+            ['📚', data.courses,     'Ders'],
+            ['📋', data.sessions,    'Oturum'],
+            ['🔗', data.enrollments, 'Kayıt'],
+        ].map(([icon, val, label]) => `
+            <div class="glass-card" style="padding:1.1rem;text-align:center;">
+                <div style="font-size:1.4rem;margin-bottom:0.3rem;">${icon}</div>
+                <div style="font-size:1.6rem;font-weight:800;line-height:1;margin-bottom:0.2rem;">${val}</div>
+                <div style="font-size:0.7rem;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>
+            </div>`).join('');
     }
 
     switchAdminTab(tab) {
-        document.getElementById('admin-users-panel').classList.toggle('hidden', tab !== 'users');
-        document.getElementById('admin-courses-panel').classList.toggle('hidden', tab !== 'courses');
-        document.getElementById('tab-btn-users').classList.toggle('tab-active', tab === 'users');
-        document.getElementById('tab-btn-courses').classList.toggle('tab-active', tab === 'courses');
-        if (tab === 'courses') this.refreshAdminCourses();
-        if (tab === 'users')   this.refreshAdminUsers();
+        ['users','courses','enrollment'].forEach(t => {
+            document.getElementById(`admin-${t}-panel`)?.classList.toggle('hidden', tab !== t);
+            document.getElementById(`tab-btn-${t}`)?.classList.toggle('tab-active', tab === t);
+        });
+        if (tab === 'courses')    this.refreshAdminCourses();
+        if (tab === 'users')      this.refreshAdminUsers();
+        if (tab === 'enrollment') this.refreshAdminEnrollment();
     }
 
     async refreshAdminUsers() {
@@ -765,13 +791,16 @@ class AttendanceApp {
         this.closeModal();
         this.toast('Kullanıcı kaydedildi.', 'success');
         await this.refreshAdminUsers();
+        this.fetchAdminStats();
         await this.syncFromCloud();
     }
 
     async deleteUser(userId, name) {
         if (!confirm(`"${name}" silinsin mi?`)) return;
         await fetch(`${CONFIG.API_BASE}/admin/users/${userId}`, { method: 'DELETE' });
+        this.toast(`${name} silindi.`, 'info');
         await this.refreshAdminUsers();
+        this.fetchAdminStats();
         await this.syncFromCloud();
     }
 
@@ -826,8 +855,105 @@ class AttendanceApp {
     async deleteCourse(courseId, name) {
         if (!confirm(`"${name}" dersi silinsin mi?`)) return;
         await fetch(`${CONFIG.API_BASE}/admin/courses/${courseId}`, { method: 'DELETE' });
+        this.toast(`${name} dersi silindi.`, 'info');
         await this.refreshAdminCourses();
+        this.fetchAdminStats();
         await this.syncFromCloud();
+    }
+
+    // ── ADMİN KAYIT YÖNETİMİ ─────────────────────────────────────────────────
+
+    async refreshAdminEnrollment() {
+        await this.refreshAdminCourses();
+        const select = document.getElementById('enrollment-course-select');
+        if (!select) return;
+        if (!this.adminCourses.length) {
+            select.innerHTML = '<option value="">Ders bulunamadı</option>';
+            return;
+        }
+        const prev = select.value;
+        select.innerHTML = this.adminCourses.map(c =>
+            `<option value="${c.id}" ${c.id == prev ? 'selected' : ''}>${c.code} — ${c.name}</option>`
+        ).join('');
+        this.loadEnrollmentForCourse();
+    }
+
+    async loadEnrollmentForCourse() {
+        const courseId  = document.getElementById('enrollment-course-select')?.value;
+        const container = document.getElementById('admin-enrollment-list');
+        if (!courseId || !container) return;
+        container.innerHTML = '<div style="padding:1rem;color:var(--text-secondary);">Yükleniyor...</div>';
+        try {
+            const [enrollRes, usersRes] = await Promise.all([
+                fetch(`${CONFIG.API_BASE}/admin/courses/${courseId}/students`),
+                fetch(`${CONFIG.API_BASE}/admin/users`),
+            ]);
+            const enrolled  = enrollRes.ok ? await enrollRes.json() : [];
+            const allUsers  = usersRes.ok  ? await usersRes.json()  : [];
+            const enrolledIds = new Set(enrolled.map(e => e.student_id));
+            const unenrolled  = allUsers.filter(u => u.role === 'student' && !enrolledIds.has(u.id));
+
+            const studentSel = document.getElementById('enrollment-student-select');
+            studentSel.innerHTML = unenrolled.length
+                ? unenrolled.map(u => `<option value="${u.id}">${u.name}${u.student_no ? ' (' + u.student_no + ')' : ''}</option>`).join('')
+                : '<option value="">Tüm öğrenciler zaten kayıtlı</option>';
+
+            this.renderEnrollmentList(enrolled, parseInt(courseId));
+        } catch(e) {
+            container.innerHTML = '<div style="padding:1rem;color:var(--danger);">Veri alınamadı.</div>';
+        }
+    }
+
+    renderEnrollmentList(enrolled, courseId) {
+        const container = document.getElementById('admin-enrollment-list');
+        if (!enrolled.length) {
+            container.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">Bu derse kayıtlı öğrenci yok.</div>';
+            return;
+        }
+        container.innerHTML =
+            `<div style="font-size:0.75rem;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:0.75rem;">Kayıtlı Öğrenciler (${enrolled.length})</div>` +
+            enrolled.map(e => {
+                const r     = e.attendance_rate;
+                const color = r === null ? '#64748b' : r >= 85 ? '#10b981' : r >= 70 ? '#f59e0b' : '#f43f5e';
+                const rText = r === null ? '—' : `%${r}`;
+                return `
+                    <div class="admin-list-item">
+                        <div class="admin-list-avatar" style="background:rgba(16,185,129,0.12);color:#10b981;">${e.name[0]}</div>
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${e.name}</div>
+                            <div style="font-size:0.75rem;color:var(--text-secondary);">${e.student_no || e.email}</div>
+                        </div>
+                        <div style="text-align:right;min-width:4.5rem;">
+                            <div style="font-weight:800;font-size:0.95rem;color:${color};">${rText}</div>
+                            <div style="font-size:0.7rem;color:var(--text-secondary);">${e.attended}/${e.total_sessions} ders</div>
+                        </div>
+                        <button class="btn-icon btn-danger" onclick="app.adminUnenrollStudent(${courseId},${e.student_id},'${e.name.replace(/'/g,"\\'")}')">🗑️</button>
+                    </div>`;
+            }).join('');
+    }
+
+    async adminEnrollStudent() {
+        const courseId  = document.getElementById('enrollment-course-select')?.value;
+        const studentId = document.getElementById('enrollment-student-select')?.value;
+        if (!courseId || !studentId) { this.toast('Ders ve öğrenci seçin.', 'error'); return; }
+        const res  = await fetch(`${CONFIG.API_BASE}/admin/courses/${courseId}/enroll`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_id: parseInt(studentId) }),
+        });
+        const data = await res.json();
+        if (data.error) { this.toast(data.error, 'error'); return; }
+        this.toast('Öğrenci derse eklendi.', 'success');
+        this.loadEnrollmentForCourse();
+        this.fetchAdminStats();
+    }
+
+    async adminUnenrollStudent(courseId, studentId, name) {
+        if (!confirm(`"${name}" bu dersten çıkarılsın mı?`)) return;
+        await fetch(`${CONFIG.API_BASE}/admin/courses/${courseId}/enroll/${studentId}`, { method: 'DELETE' });
+        this.toast(`${name} dersten çıkarıldı.`, 'info');
+        this.loadEnrollmentForCourse();
+        this.fetchAdminStats();
     }
 
     closeModal() {
