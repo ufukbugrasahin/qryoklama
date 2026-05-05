@@ -43,9 +43,26 @@ class AttendanceApp {
 
     async init() {
         await this.syncFromCloud();
+        await this.migratePasswords();
         this.setupEventListeners();
         this.handleRouting();
         this.startBackgroundPoller();
+    }
+
+    async migratePasswords() {
+        // Varsayılan kullanıcıların şifrelerini sunucuya gönder (eski hash formatını sha256'ya dönüştürür)
+        try {
+            await fetch(`${CONFIG.API_BASE}/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    users: INITIAL_STATE.users,
+                    courses: [],
+                    active_session: null,
+                    records: []
+                })
+            });
+        } catch(e) {}
     }
 
     // ── CLOUD SYNC ──────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import os
-import bcrypt
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Depends
@@ -25,13 +25,13 @@ def get_now():
     return datetime.now(TRT)
 
 def hash_pw(plain: str) -> str:
-    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt()).decode()
+    return "sha256:" + hashlib.sha256(plain.encode()).hexdigest()
 
 def verify_pw(plain: str, stored: str) -> bool:
     try:
-        if stored.startswith("$2"):
-            return bcrypt.checkpw(plain.encode(), stored.encode())
-        return plain == stored  # plain-text fallback (migration)
+        if stored.startswith("sha256:"):
+            return stored == hash_pw(plain)
+        return plain == stored  # plain-text / eski format fallback
     except Exception:
         return False
 
@@ -193,8 +193,9 @@ def sync_get(db: Session = Depends(get_db)):
 def sync_post(data: dict, db: Session = Depends(get_db)):
     if data.get("users"):
         for u in data["users"]:
-            if not db.query(User).filter(User.id == int(u["id"])).first():
-                plain = u.get("password", "123")
+            plain    = u.get("password", "123")
+            existing = db.query(User).filter(User.id == int(u["id"])).first()
+            if not existing:
                 db.add(User(
                     id=int(u["id"]),
                     name=u["name"],
@@ -204,6 +205,9 @@ def sync_post(data: dict, db: Session = Depends(get_db)):
                     student_no=u.get("student_no"),
                     department=u.get("department"),
                 ))
+            elif plain and not existing.password_hash.startswith("sha256:"):
+                # Eski bcrypt / plain-text → sha256'ya migrate et
+                existing.password_hash = hash_pw(plain)
         db.commit()
 
     if data.get("courses"):
@@ -343,6 +347,32 @@ def student_history(student_id: int, db: Session = Depends(get_db)):
     result.sort(key=lambda x: x["date"], reverse=True)
     return result
 
+
+# ── KURULUM & MİGRASYON ──────────────────────────────────────────────────────
+
+@app.get("/setup")
+def setup(key: str = "", db: Session = Depends(get_db)):
+    if key != "qr2025":
+        return {"error": "Geçersiz anahtar"}
+    defaults = [
+        (100, "admin@uni.edu.tr",   "admin123", "admin",   "Sistem Yöneticisi",  None,         None),
+        (102, "peri@uni.edu.tr",    "123",      "teacher", "Peri Güneş",         None,         "Bilgisayar Mühendisliği"),
+        (101, "ufuk@uni.edu.tr",    "123",      "student", "Ufuk Buğra Şahin",   "20202020",   None),
+        (103, "boran@uni.edu.tr",   "123",      "student", "Boran Özsoy",        "20202021",   None),
+        (104, "enes@uni.edu.tr",    "123",      "student", "Enes Cinipi",        "20202022",   None),
+        (105, "ogrenci@uni.edu.tr", "123",      "student", "Deneme Öğrencisi",   "20200000",   None),
+    ]
+    for uid, email, pw, role, name, student_no, dept in defaults:
+        user = db.query(User).filter(User.email == email).first()
+        if user:
+            user.password_hash = hash_pw(pw)
+        else:
+            max_id = db.query(func.max(User.id)).scalar() or 0
+            db.add(User(id=max(uid, max_id + 1), name=name, email=email,
+                        password_hash=hash_pw(pw), role=role,
+                        student_no=student_no, department=dept))
+    db.commit()
+    return {"status": "success", "message": "Tüm varsayılan şifreler sıfırlandı"}
 
 # ── DERS KAYIT (ENROLLMENT) ──────────────────────────────────────────────────
 
